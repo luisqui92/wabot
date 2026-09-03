@@ -53,10 +53,63 @@ npm start
 
 El panel queda en `http://localhost:3000`.
 
-### Detrás de un dominio compartido (`BASE_PATH`)
+### En producción, con su propio subdominio
 
-Si la app **no** vive en la raíz de su dominio sino colgada de un prefijo
-—por ejemplo `https://api.chatgo.ia.bo/wabot`— hay que decírselo:
+Es la forma recomendada y la que usa el despliegue actual
+(`wabot.chatgo.ia.bo`). `BASE_PATH` queda vacío: la app vive en la raíz de su
+dominio y no hay ningún prefijo que alinear.
+
+```bash
+APP_URL=https://wabot.chatgo.ia.bo
+BASE_PATH=
+```
+
+**DNS** — un registro `A` apuntando al servidor donde corre el proceso:
+
+```
+wabot.chatgo.ia.bo.   A   <IP del servidor>
+```
+
+**nginx** — un `server` propio, sin prefijos:
+
+```nginx
+server {
+    server_name wabot.chatgo.ia.bo;
+
+    location / {
+        proxy_pass         http://127.0.0.1:3000;
+        proxy_http_version 1.1;
+        proxy_set_header   Host              $host;
+        proxy_set_header   X-Real-IP         $remote_addr;
+        proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header   X-Forwarded-Proto $scheme;
+    }
+}
+```
+
+**TLS** — Meta exige HTTPS con certificado válido en la Callback URL; un
+autofirmado no le sirve:
+
+```bash
+certbot --nginx -d wabot.chatgo.ia.bo
+```
+
+> El `X-Forwarded-Proto` no es decorativo: la app corre con
+> `app.set("trust proxy", 1)`, y sin esa cabecera ve todo el tráfico como si
+> viniera de 127.0.0.1.
+
+#### Por qué un subdominio y no `api.chatgo.ia.bo/wabot`
+
+Las dos formas funcionan, pero el subdominio **aísla el origen**. Mientras el
+panel comparta origen con otra API, cualquier JavaScript servido desde ese
+dominio puede leer el token de sesión del panel en `sessionStorage`. Un
+subdominio propio cierra eso, y de paso no hay prefijos que mantener alineados
+entre nginx, el HTML y las llamadas a la API.
+
+### Alternativa: colgado de un prefijo (`BASE_PATH`)
+
+Si en algún momento tiene que compartir dominio —por ejemplo
+`https://api.chatgo.ia.bo/wabot`— hay que decírselo:
 
 ```bash
 APP_URL=https://api.chatgo.ia.bo
@@ -64,10 +117,8 @@ BASE_PATH=/wabot
 ```
 
 Con eso todo (panel, assets, API y webhook) se monta bajo `/wabot` y el panel
-resuelve sus rutas contra ese prefijo. `BASE_PATH` acepta `wabot`, `/wabot`,
-`wabot/` o `/wabot/`: se normaliza solo.
-
-nginx, **sin** recortar el prefijo (la app ya lo espera):
+resuelve sus rutas contra ese prefijo. Acepta `wabot`, `/wabot`, `wabot/` o
+`/wabot/`: se normaliza solo.
 
 ```nginx
 location /wabot/ {
@@ -84,20 +135,13 @@ location /wabot/ {
 > con `http://127.0.0.1:3000/` nginx recorta `/wabot` y la app —que lo está
 > esperando— responde 404 a todo.
 
-**Un subdominio propio (`wabot.chatgo.ia.bo`) es preferible** y es lo que
-recomiendo: dejás `BASE_PATH` vacío, no hay prefijos que alinear, y sobre todo
-el panel deja de compartir origen con el resto de `api.chatgo.ia.bo` — mientras
-lo comparta, cualquier JavaScript servido desde ese dominio puede leer el token
-de sesión del panel en `sessionStorage`. El prefijo funciona; el subdominio
-además aísla.
-
 ### Configurar el webhook en Meta
 
 En el dashboard de Meta → tu app → WhatsApp → **Configuration**:
 
 | Campo | Valor |
 |---|---|
-| Callback URL | `https://TU-DOMINIO/webhook/whatsapp`<br>(con `BASE_PATH`: `https://api.chatgo.ia.bo/wabot/webhook/whatsapp`) |
+| Callback URL | `https://wabot.chatgo.ia.bo/webhook/whatsapp` |
 | Verify token | el mismo string que pusiste en `WHATSAPP_VERIFY_TOKEN` |
 | Webhook fields | suscribir **`messages`** |
 

@@ -19,7 +19,10 @@ const el = (tag, clase, texto) => {
 };
 
 async function api(ruta, opciones = {}) {
-  const res = await fetch(`/api${ruta}`, {
+  // Sin barra inicial a proposito: se resuelve contra el <base> que inyecta
+  // el servidor, asi el panel funciona igual en la raiz de un dominio propio
+  // que colgado de un prefijo (ej. api.chatgo.ia.bo/wabot/).
+  const res = await fetch(`api${ruta}`, {
     ...opciones,
     headers: {
       "Content-Type": "application/json",

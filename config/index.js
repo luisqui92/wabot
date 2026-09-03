@@ -6,10 +6,26 @@
 // El .env tiene que ser siempre la fuente de verdad.
 require("dotenv").config({ override: true });
 
+// "wabot", "/wabot", "wabot/" y "/wabot/" tienen que dar todos "/wabot".
+// Cadena vacia se queda vacia (app en la raiz).
+function normalizarBase(valor) {
+  const limpio = String(valor || "").trim().replace(/^\/+|\/+$/g, "");
+  return limpio ? `/${limpio}` : "";
+}
+
 const CONFIG = {
   MONGODB_URI: process.env.MONGODB_URI,
   PORT: parseInt(process.env.PORT || "3000", 10),
   APP_URL: process.env.APP_URL || "",
+
+  // Prefijo bajo el que se sirve toda la app cuando comparte dominio con
+  // otra cosa (ej. "/wabot" para api.chatgo.ia.bo/wabot). Vacio = la app
+  // vive en la raiz de su propio dominio o subdominio.
+  //
+  // Se normaliza aca y no en cada uso: sin esto, un "wabot" o un "/wabot/"
+  // en el .env producen rutas como "/wabot//api/login" que devuelven 404
+  // sin ninguna pista de por que.
+  BASE_PATH: normalizarBase(process.env.BASE_PATH),
 
   JWT_SECRET: process.env.JWT_SECRET,
 

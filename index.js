@@ -1,6 +1,7 @@
 // ═══════════════════════════════════════════════════════════════════════════
 // wabot — Bot de WhatsApp con IA (Meta Cloud API) + panel de control
 // ═══════════════════════════════════════════════════════════════════════════
+const fs = require("fs");
 const path = require("path");
 const express = require("express");
 const helmet = require("helmet");
@@ -49,22 +50,45 @@ app.use(express.json({
   verify: (req, _res, buf) => { req.rawBody = buf; },
 }));
 
-require("./routes/webhookWhatsapp")(app);
-require("./routes/panel")(app);
+// Todo cuelga de un Router montado en BASE_PATH, en vez de colgar de app
+// directamente. Asi la misma imagen sirve para un dominio propio
+// (BASE_PATH vacio) y para compartir dominio con otra API
+// (BASE_PATH="/wabot"), sin depender de que el reverse proxy recorte el
+// prefijo — que es la parte que se olvida y deja 404 dificiles de leer.
+const router = express.Router();
 
-app.use(express.static(path.join(__dirname, "public")));
+require("./routes/webhookWhatsapp")(router);
+require("./routes/panel")(router);
 
-app.get("/salud", (_req, res) => res.json({
+// index:false porque el index.html se sirve mas abajo con el <base>
+// inyectado; si express.static lo sirviera primero, saldria el archivo
+// crudo con href="/" y el panel pediria los assets a la raiz del dominio.
+router.use(express.static(path.join(__dirname, "public"), { index: false }));
+
+// El <base> hace que TODA ruta relativa del panel (assets y llamadas a la
+// API) se resuelva contra el prefijo real, con o sin barra final en la URL.
+// Es una sustitucion al arrancar y no en cada request: el archivo no cambia
+// mientras el proceso vive.
+const htmlPanel = fs
+  .readFileSync(path.join(__dirname, "public", "index.html"), "utf8")
+  .replace('<base href="/">', `<base href="${CONFIG.BASE_PATH}/">`);
+
+router.get(["/", "/index.html"], (_req, res) => res.type("html").send(htmlPanel));
+
+router.get("/salud", (_req, res) => res.json({
   ok: true,
   mongo: mongoose.connection.readyState === 1,
 }));
+
+app.use(CONFIG.BASE_PATH || "/", router);
 
 mongoose.connect(CONFIG.MONGODB_URI)
   .then(() => {
     log.info("[DB] Conectado a MongoDB");
     app.listen(CONFIG.PORT, () => {
       log.info(`[HTTP] wabot escuchando en :${CONFIG.PORT}`);
-      if (CONFIG.APP_URL) log.info(`[HTTP] Callback URL para Meta: ${CONFIG.APP_URL}/webhook/whatsapp`);
+      if (CONFIG.BASE_PATH) log.info(`[HTTP] Montado bajo ${CONFIG.BASE_PATH}`);
+      if (CONFIG.APP_URL) log.info(`[HTTP] Callback URL para Meta: ${CONFIG.APP_URL}${CONFIG.BASE_PATH}/webhook/whatsapp`);
     });
   })
   .catch((e) => {

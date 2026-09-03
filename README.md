@@ -53,13 +53,51 @@ npm start
 
 El panel queda en `http://localhost:3000`.
 
+### Detrás de un dominio compartido (`BASE_PATH`)
+
+Si la app **no** vive en la raíz de su dominio sino colgada de un prefijo
+—por ejemplo `https://api.chatgo.ia.bo/wabot`— hay que decírselo:
+
+```bash
+APP_URL=https://api.chatgo.ia.bo
+BASE_PATH=/wabot
+```
+
+Con eso todo (panel, assets, API y webhook) se monta bajo `/wabot` y el panel
+resuelve sus rutas contra ese prefijo. `BASE_PATH` acepta `wabot`, `/wabot`,
+`wabot/` o `/wabot/`: se normaliza solo.
+
+nginx, **sin** recortar el prefijo (la app ya lo espera):
+
+```nginx
+location /wabot/ {
+    proxy_pass         http://127.0.0.1:3000;   # sin barra final: no recorta
+    proxy_http_version 1.1;
+    proxy_set_header   Host              $host;
+    proxy_set_header   X-Real-IP         $remote_addr;
+    proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
+    proxy_set_header   X-Forwarded-Proto $scheme;
+}
+```
+
+> La barra final en `proxy_pass` es la diferencia entre que funcione y que no:
+> con `http://127.0.0.1:3000/` nginx recorta `/wabot` y la app —que lo está
+> esperando— responde 404 a todo.
+
+**Un subdominio propio (`wabot.chatgo.ia.bo`) es preferible** y es lo que
+recomiendo: dejás `BASE_PATH` vacío, no hay prefijos que alinear, y sobre todo
+el panel deja de compartir origen con el resto de `api.chatgo.ia.bo` — mientras
+lo comparta, cualquier JavaScript servido desde ese dominio puede leer el token
+de sesión del panel en `sessionStorage`. El prefijo funciona; el subdominio
+además aísla.
+
 ### Configurar el webhook en Meta
 
 En el dashboard de Meta → tu app → WhatsApp → **Configuration**:
 
 | Campo | Valor |
 |---|---|
-| Callback URL | `https://TU-DOMINIO/webhook/whatsapp` |
+| Callback URL | `https://TU-DOMINIO/webhook/whatsapp`<br>(con `BASE_PATH`: `https://api.chatgo.ia.bo/wabot/webhook/whatsapp`) |
 | Verify token | el mismo string que pusiste en `WHATSAPP_VERIFY_TOKEN` |
 | Webhook fields | suscribir **`messages`** |
 
@@ -74,7 +112,8 @@ una conversación y quemar tu cuota de la API de IA. Ponelo.
 ## Variables de entorno
 
 Están todas documentadas en [`.env.example`](.env.example). Obligatorias para
-arrancar: `MONGODB_URI` y `JWT_SECRET`.
+arrancar: `MONGODB_URI` y `JWT_SECRET`. Al levantar, el log imprime la Callback
+URL ya armada con el prefijo — copiala de ahí en vez de escribirla a mano.
 
 ## Estructura
 

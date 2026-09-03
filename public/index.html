@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Panel del bot</title>
+  <link rel="stylesheet" href="/css/panel.css">
+</head>
+<body>
+
+<section id="vista-login" class="centrado">
+  <form id="form-login" class="tarjeta">
+    <h1>Panel del bot</h1>
+    <label>Email <input type="email" id="login-email" autocomplete="username" required></label>
+    <label>Contraseña <input type="password" id="login-password" autocomplete="current-password" required></label>
+    <button type="submit">Entrar</button>
+    <p id="login-error" class="error"></p>
+  </form>
+</section>
+
+<div id="vista-panel" class="oculto">
+  <header>
+    <strong>Panel del bot</strong>
+    <nav>
+      <button data-tab="bot" class="tab activa">Bot</button>
+      <button data-tab="conocimiento" class="tab">Conocimiento</button>
+      <button data-tab="conversaciones" class="tab">Conversaciones</button>
+      <button data-tab="huecos" class="tab">Huecos</button>
+    </nav>
+    <button id="btn-salir" class="sutil">Salir</button>
+  </header>
+
+  <main>
+    <!-- ─── BOT ─────────────────────────────────────────────────────── -->
+    <section id="tab-bot" class="panel">
+      <p id="aviso-base" class="aviso oculto"></p>
+      <form id="form-negocio" class="tarjeta ancha">
+        <label>Nombre del negocio <input id="n-nombre" required></label>
+        <label>Descripción — qué es el negocio, en una o dos frases
+          <textarea id="n-descripcion" rows="2"></textarea></label>
+        <label>Instrucciones para el bot — cómo tiene que hablar y qué no debe hacer
+          <textarea id="n-instrucciones" rows="5"></textarea></label>
+        <label>Qué responde cuando no sabe
+          <input id="n-mensajeSinInfo"></label>
+        <label>Avisar a este número cuando el bot no sepa (opcional, formato 59176543210)
+          <input id="n-numeroEscalamiento"></label>
+        <label class="linea"><input type="checkbox" id="n-activo"> Bot activo</label>
+        <button type="submit">Guardar</button>
+        <span id="negocio-estado" class="estado"></span>
+      </form>
+    </section>
+
+    <!-- ─── CONOCIMIENTO ────────────────────────────────────────────── -->
+    <section id="tab-conocimiento" class="panel oculto">
+      <form id="form-documento" class="tarjeta ancha">
+        <h2>Cargar información</h2>
+        <label>Nombre <input id="d-nombre" placeholder="Precios 2026, Horarios, Preguntas frecuentes…" required></label>
+        <label>Texto — pegalo acá, o subí un archivo .txt / .md / .csv
+          <textarea id="d-texto" rows="10" required></textarea></label>
+        <input type="file" id="d-archivo" accept=".txt,.md,.csv,text/plain">
+        <button type="submit">Cargar</button>
+        <span id="documento-estado" class="estado"></span>
+      </form>
+
+      <h2>Documentos cargados</h2>
+      <div id="lista-documentos" class="lista"></div>
+
+      <h2>Correcciones sueltas</h2>
+      <p class="nota">Datos que agregaste a mano, normalmente desde una conversación en la que el bot falló.</p>
+      <div id="lista-correcciones" class="lista"></div>
+    </section>
+
+    <!-- ─── CONVERSACIONES ──────────────────────────────────────────── -->
+    <section id="tab-conversaciones" class="panel oculto">
+      <div class="split">
+        <div id="lista-conversaciones" class="lista"></div>
+        <div id="detalle-conversacion" class="detalle">
+          <p class="nota">Elegí una conversación.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ─── HUECOS ──────────────────────────────────────────────────── -->
+    <section id="tab-huecos" class="panel oculto">
+      <p class="nota">Preguntas reales que el bot no supo contestar. Respondé una y se guarda como conocimiento nuevo.</p>
+      <div id="lista-huecos" class="lista"></div>
+    </section>
+  </main>
+</div>
+
+<script src="/js/panel.js"></script>
+</body>
+</html>

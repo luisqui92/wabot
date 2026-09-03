@@ -1,0 +1,296 @@
+// wabot — Panel de control. Sin framework y sin build: son cuatro
+// pantallas contra una API REST, y una toolchain acá costaría más
+// mantenimiento del que ahorra.
+"use strict";
+
+// sessionStorage y no localStorage: el token vive 8 horas y esto se abre en
+// computadoras compartidas. Al cerrar la pestaña, la sesión se va.
+const TOKEN_KEY = "wabot_token";
+let token = sessionStorage.getItem(TOKEN_KEY) || "";
+
+const $ = (sel) => document.querySelector(sel);
+// Todo lo que viene de la API es texto que escribió un cliente por WhatsApp:
+// se inserta siempre con textContent, nunca con innerHTML.
+const el = (tag, clase, texto) => {
+  const n = document.createElement(tag);
+  if (clase) n.className = clase;
+  if (texto !== undefined) n.textContent = texto;
+  return n;
+};
+
+async function api(ruta, opciones = {}) {
+  const res = await fetch(`/api${ruta}`, {
+    ...opciones,
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...opciones.headers,
+    },
+  });
+  if (res.status === 401) { cerrarSesion(); throw new Error("Sesión vencida"); }
+  const datos = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(datos.error || `Error ${res.status}`);
+  return datos;
+}
+
+function cerrarSesion() {
+  token = "";
+  sessionStorage.removeItem(TOKEN_KEY);
+  $("#vista-panel").classList.add("oculto");
+  $("#vista-login").classList.remove("oculto");
+}
+
+// ─── LOGIN ──────────────────────────────────────────────────────────────────
+$("#form-login").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  $("#login-error").textContent = "";
+  try {
+    const r = await api("/login", {
+      method: "POST",
+      body: JSON.stringify({ email: $("#login-email").value, password: $("#login-password").value }),
+    });
+    token = r.token;
+    sessionStorage.setItem(TOKEN_KEY, token);
+    entrar();
+  } catch (err) {
+    $("#login-error").textContent = err.message;
+  }
+});
+
+$("#btn-salir").addEventListener("click", cerrarSesion);
+
+function entrar() {
+  $("#vista-login").classList.add("oculto");
+  $("#vista-panel").classList.remove("oculto");
+  cargarNegocio();
+}
+
+// ─── PESTAÑAS ───────────────────────────────────────────────────────────────
+const CARGADORES = {
+  bot: cargarNegocio,
+  conocimiento: cargarConocimiento,
+  conversaciones: cargarConversaciones,
+  huecos: cargarHuecos,
+};
+
+document.querySelectorAll(".tab").forEach((b) => {
+  b.addEventListener("click", () => {
+    document.querySelectorAll(".tab").forEach(t => t.classList.remove("activa"));
+    b.classList.add("activa");
+    document.querySelectorAll(".panel").forEach(p => p.classList.add("oculto"));
+    $(`#tab-${b.dataset.tab}`).classList.remove("oculto");
+    // Se recarga en cada cambio de pestaña a propósito: las conversaciones
+    // llegan por WhatsApp mientras el panel está abierto, así que una vista
+    // cacheada muestra datos viejos justo cuando más importan.
+    CARGADORES[b.dataset.tab]().catch(mostrarError);
+  });
+});
+
+function mostrarError(err) {
+  console.error(err);
+  alert(err.message);
+}
+
+// ─── BOT ────────────────────────────────────────────────────────────────────
+async function cargarNegocio() {
+  const n = await api("/negocio");
+  $("#n-nombre").value = n.nombre || "";
+  $("#n-descripcion").value = n.descripcion || "";
+  $("#n-instrucciones").value = n.instrucciones || "";
+  $("#n-mensajeSinInfo").value = n.mensajeSinInfo || "";
+  $("#n-numeroEscalamiento").value = n.numeroEscalamiento || "";
+  $("#n-activo").checked = !!n.activo;
+
+  // El aviso importa: significa que hay información cargada que el bot NO
+  // está leyendo, y el síntoma visible sería que diga "no sé" sobre algo que
+  // el dueño juraría que cargó.
+  const aviso = $("#aviso-base");
+  if (n.base?.recortados > 0) {
+    aviso.textContent = `⚠ ${n.base.recortados} de ${n.base.total} fragmentos no entran en el contexto y el bot no los está leyendo. Desactivá los que ya no sirvan, o achicá la base.`;
+    aviso.classList.remove("oculto");
+  } else {
+    aviso.classList.add("oculto");
+  }
+}
+
+$("#form-negocio").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  try {
+    await api("/negocio", {
+      method: "PUT",
+      body: JSON.stringify({
+        nombre: $("#n-nombre").value,
+        descripcion: $("#n-descripcion").value,
+        instrucciones: $("#n-instrucciones").value,
+        mensajeSinInfo: $("#n-mensajeSinInfo").value,
+        numeroEscalamiento: $("#n-numeroEscalamiento").value.replace(/[^0-9]/g, ""),
+        activo: $("#n-activo").checked,
+      }),
+    });
+    $("#negocio-estado").textContent = "Guardado ✓";
+    setTimeout(() => { $("#negocio-estado").textContent = ""; }, 2500);
+  } catch (err) { mostrarError(err); }
+});
+
+// ─── CONOCIMIENTO ───────────────────────────────────────────────────────────
+$("#d-archivo").addEventListener("change", (e) => {
+  const archivo = e.target.files[0];
+  if (!archivo) return;
+  // Se lee en el navegador y se manda como texto: así el servidor no necesita
+  // multer ni manejar archivos, y queda claro que solo se soporta texto plano
+  // (un PDF llegaría como bytes ilegibles, y es mejor que no se pueda a que
+  // se cargue basura en la base de conocimiento).
+  const lector = new FileReader();
+  lector.onload = () => {
+    $("#d-texto").value = lector.result;
+    if (!$("#d-nombre").value) $("#d-nombre").value = archivo.name.replace(/\.[^.]+$/, "");
+  };
+  lector.readAsText(archivo);
+});
+
+$("#form-documento").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  try {
+    const r = await api("/documentos", {
+      method: "POST",
+      body: JSON.stringify({ nombre: $("#d-nombre").value, texto: $("#d-texto").value }),
+    });
+    $("#documento-estado").textContent = `Cargado ✓ (${r.fragmentos} fragmentos)`;
+    $("#form-documento").reset();
+    await cargarConocimiento();
+    setTimeout(() => { $("#documento-estado").textContent = ""; }, 3000);
+  } catch (err) { mostrarError(err); }
+});
+
+async function cargarConocimiento() {
+  const [docs, correcciones] = await Promise.all([
+    api("/documentos"),
+    api("/fragmentos?origen=correccion"),
+  ]);
+
+  const cont = $("#lista-documentos");
+  cont.replaceChildren();
+  if (!docs.length) cont.append(el("p", "nota", "Todavía no cargaste nada. El bot no va a poder responder consultas concretas."));
+  for (const d of docs) {
+    const item = el("div", "item");
+    const fila = el("div", "fila");
+    fila.append(el("h3", null, d.nombre), el("span", "badge", `${d.fragmentos} fragmentos`));
+    const borrar = el("button", "peligro", "Borrar");
+    borrar.addEventListener("click", async () => {
+      if (!confirm(`¿Borrar "${d.nombre}" y sus ${d.fragmentos} fragmentos? El bot deja de saber todo eso.`)) return;
+      try { await api(`/documentos/${d._id}`, { method: "DELETE" }); await cargarConocimiento(); }
+      catch (err) { mostrarError(err); }
+    });
+    fila.append(borrar);
+    item.append(fila);
+    cont.append(item);
+  }
+
+  const cc = $("#lista-correcciones");
+  cc.replaceChildren();
+  if (!correcciones.length) cc.append(el("p", "nota", "Ninguna todavía."));
+  for (const f of correcciones) {
+    const item = el("div", "item");
+    const fila = el("div", "fila");
+    fila.append(el("h3", null, f.titulo || "(sin título)"));
+    const toggle = el("button", "sutil", f.activo ? "Desactivar" : "Activar");
+    toggle.addEventListener("click", async () => {
+      try { await api(`/fragmentos/${f._id}`, { method: "PUT", body: JSON.stringify({ activo: !f.activo }) }); await cargarConocimiento(); }
+      catch (err) { mostrarError(err); }
+    });
+    fila.append(toggle);
+    item.append(fila, el("p", null, f.texto));
+    cc.append(item);
+  }
+}
+
+// ─── CONVERSACIONES ─────────────────────────────────────────────────────────
+async function cargarConversaciones() {
+  const convs = await api("/conversaciones");
+  const cont = $("#lista-conversaciones");
+  cont.replaceChildren();
+  if (!convs.length) cont.append(el("p", "nota", "Sin conversaciones todavía."));
+  for (const c of convs) {
+    const item = el("div", "item");
+    const fila = el("div", "fila");
+    fila.append(el("h3", null, c.nombrePerfil || c.numero));
+    if (c.huecos > 0) fila.append(el("span", "badge alerta", `${c.huecos} sin respuesta`));
+    if (c.pausado) fila.append(el("span", "badge", "bot pausado"));
+    item.append(fila, el("p", null, (c.ultimoMensaje || "").slice(0, 120)));
+    item.addEventListener("click", () => abrirConversacion(c._id).catch(mostrarError));
+    item.style.cursor = "pointer";
+    cont.append(item);
+  }
+}
+
+async function abrirConversacion(id) {
+  const c = await api(`/conversaciones/${id}`);
+  const d = $("#detalle-conversacion");
+  d.replaceChildren();
+
+  const cabecera = el("div", "fila");
+  cabecera.append(el("h3", null, c.nombrePerfil ? `${c.nombrePerfil} — ${c.numero}` : c.numero));
+  const btnPausa = el("button", "sutil", c.pausado ? "Devolver al bot" : "Atender yo");
+  btnPausa.addEventListener("click", async () => {
+    try { await api(`/conversaciones/${id}/pausa`, { method: "PUT", body: JSON.stringify({ pausado: !c.pausado }) }); await abrirConversacion(id); }
+    catch (err) { mostrarError(err); }
+  });
+  cabecera.append(btnPausa);
+  d.append(cabecera);
+
+  for (const m of c.mensajes) {
+    const b = el("div", `burbuja ${m.rol}${m.sinRespuesta ? " sin-respuesta" : ""}`, m.texto);
+    d.append(b);
+  }
+
+  const caja = el("div", "responder");
+  const input = el("input");
+  input.placeholder = c.pausado ? "Escribí tu respuesta…" : "Pausá el bot para responder vos";
+  input.disabled = !c.pausado;
+  const enviar = el("button", null, "Enviar");
+  enviar.disabled = !c.pausado;
+  enviar.addEventListener("click", async () => {
+    if (!input.value.trim()) return;
+    try { await api(`/conversaciones/${id}/responder`, { method: "POST", body: JSON.stringify({ texto: input.value }) }); await abrirConversacion(id); }
+    catch (err) { mostrarError(err); }
+  });
+  caja.append(input, enviar);
+  d.append(caja);
+}
+
+// ─── HUECOS ─────────────────────────────────────────────────────────────────
+async function cargarHuecos() {
+  const huecos = await api("/huecos");
+  const cont = $("#lista-huecos");
+  cont.replaceChildren();
+  if (!huecos.length) { cont.append(el("p", "nota", "Ninguno. El bot supo responder todo lo que le preguntaron.")); return; }
+
+  for (const h of huecos) {
+    const item = el("div", "item");
+    item.append(el("h3", null, h.pregunta));
+    item.append(el("p", null, `El bot respondió: ${h.respuestaBot}`));
+
+    const caja = el("div", "responder");
+    const input = el("input");
+    input.placeholder = "La respuesta correcta — se guarda como conocimiento del bot";
+    const guardar = el("button", null, "Enseñar");
+    guardar.addEventListener("click", async () => {
+      if (!input.value.trim()) return;
+      try {
+        // Se guarda la pregunta junto con la respuesta: sin la pregunta, un
+        // dato suelto ("$150") no le dice nada a la IA la próxima vez.
+        await api("/fragmentos", {
+          method: "POST",
+          body: JSON.stringify({ titulo: h.pregunta.slice(0, 80), texto: `Pregunta: ${h.pregunta}\nRespuesta: ${input.value.trim()}` }),
+        });
+        item.replaceChildren(el("p", "estado", "Guardado ✓ — el bot ya sabe esto."));
+      } catch (err) { mostrarError(err); }
+    });
+    caja.append(input, guardar);
+    item.append(caja);
+    cont.append(item);
+  }
+}
+
+// ─── ARRANQUE ───────────────────────────────────────────────────────────────
+if (token) entrar();

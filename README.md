@@ -182,7 +182,15 @@ routes/
 public/                    el panel (sin framework, sin build)
 scripts/crear_usuario.js   alta del negocio y del primer usuario
 scripts/cambiar_numero.js  corrige el phoneNumberId de Meta de un negocio
+scripts/respaldo.js        copia diaria cifrada, verificada restaurándola
+scripts/restaurar.js       restaura un respaldo
 ```
+
+## Respaldos
+
+Copia diaria cifrada que **se verifica restaurándola de verdad** antes de darse
+por buena — ver [`RESPALDOS.md`](RESPALDOS.md). Hay que configurarla: sin
+`BACKUP_CLAVE` en el `.env`, el script se niega a correr.
 
 ## Hacia dónde va
 

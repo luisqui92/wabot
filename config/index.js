@@ -57,6 +57,18 @@ const CONFIG = {
   // Sin esto el bot no recuerda nada dentro de la misma charla; con
   // demasiados, cada respuesta cuesta mas y arrastra malentendidos viejos.
   MAX_MENSAJES_HISTORIAL: 12,
+
+  // ─── RESPALDOS ───────────────────────────────────────────────────────────
+  // BACKUP_CLAVE cifra cada copia (AES-256-GCM). Sin ella el respaldo se
+  // niega a correr: una copia sin cifrar no se puede sacar del servidor, y
+  // un respaldo que solo vive en el mismo disco que la base no protege del
+  // caso más común, que es perder el disco.
+  //   openssl rand -base64 48
+  // Guardala TAMBIÉN fuera del servidor: si se pierde el servidor y la clave
+  // estaba solo ahí, los respaldos no se pueden abrir.
+  BACKUP_CLAVE: process.env.BACKUP_CLAVE || "",
+  BACKUP_DIR: process.env.BACKUP_DIR || `${process.env.HOME || "/home/rastreoplus"}/respaldos`,
+  BACKUP_RETENCION_DIAS: parseInt(process.env.BACKUP_RETENCION_DIAS || "14", 10),
 };
 
 // ─── LOGGER ────────────────────────────────────────────────────────────────

@@ -107,8 +107,9 @@ Ese núcleo es sólido y **no hay que tirarlo**. Todo lo de abajo se apoya encim
 
 ## El orden
 
-### Módulo 0 — Respaldos verificados
-**Antes que cualquier función nueva.**
+### Módulo 0 — Respaldos verificados ✅ HECHO
+Ver [`RESPALDOS.md`](RESPALDOS.md). Falta configurar `BACKUP_CLAVE` y el cron
+en el servidor.
 
 Hoy la base vive en un solo disco. Las instantáneas de GCE recuperan el disco
 de ayer, no la base de esta mañana, y nadie las probó restaurándolas.

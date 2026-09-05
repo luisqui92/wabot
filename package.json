@@ -5,11 +5,14 @@
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
-    "crear-usuario": "node scripts/crear_usuario.js"
+    "crear-usuario": "node scripts/crear_usuario.js",
+    "respaldo": "node scripts/respaldo.js",
+    "restaurar": "node scripts/restaurar.js"
   },
   "dependencies": {
     "axios": "^1.6.0",
     "bcryptjs": "^3.0.3",
+    "bson": "^6.10.4",
     "dotenv": "^17.4.2",
     "express": "^4.18.2",
     "helmet": "^8.3.0",

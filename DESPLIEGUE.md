@@ -90,11 +90,17 @@ echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
 En Debian 13 (trixie) todo sale de los repos oficiales — Node 20 viene incluido:
 
 ```bash
-sudo apt install -y nodejs npm nginx certbot python3-certbot-nginx git
+sudo apt install -y nodejs npm nginx certbot python3-certbot-nginx git gnupg
 sudo npm install -g pm2
 ```
 
-✅ **Verificar:** `node -v` da v20.x (la app pide ≥18) y `nginx -v` responde.
+`gnupg` está en la lista porque la imagen mínima de Debian 13 **no lo trae**, y
+sin él el paso 5 falla de una forma que no se lee como la causa: `gpg: command
+not found` pasa desapercibido, la clave nunca se crea, y lo que ves después es
+apt rechazando el repo de MongoDB por "no firmado".
+
+✅ **Verificar:** `node -v` da v20.x (la app pide ≥18), `nginx -v` responde y
+`command -v gpg` devuelve una ruta.
 
 > En Debian 12 el `nodejs` de los repos es la 18, que también sirve. Si
 > necesitás una versión más nueva ahí, el repo de NodeSource ya no usa el nombre
@@ -121,6 +127,7 @@ curl -fsSL https://www.mongodb.org/static/pgp/server-8.0.asc \
   | sudo gpg -o /usr/share/keyrings/mongodb.gpg --dearmor
 echo "deb [signed-by=/usr/share/keyrings/mongodb.gpg] https://repo.mongodb.org/apt/debian $CODENAME/mongodb-org/8.0 main" \
   | sudo tee /etc/apt/sources.list.d/mongodb.list
+ls -l /usr/share/keyrings/mongodb.gpg     # comprobá que existe ANTES de seguir
 sudo apt update && sudo apt install -y mongodb-org
 sudo systemctl enable --now mongod
 ```

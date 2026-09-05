@@ -42,7 +42,14 @@ async function procesarWebhook(body) {
       // Puede ser un evento de estado (delivered/read/failed), no un mensaje.
       for (const msg of value?.messages || []) {
         const texto = extraerTexto(msg);
-        if (!msg.from || !texto || !phoneNumberId) continue;
+        // Un tipo no soportado se registra en vez de desaparecer: si alguien
+        // manda un audio y el bot no contesta, el log dice por qué. Sin esta
+        // línea, "no llegó nada" y "llegó algo que ignoramos" se ven igual.
+        if (!texto) {
+          log.info(`[WEBHOOK] ${msg.from || "?"} mandó un ${msg.type} — tipo no soportado, ignorado`);
+          continue;
+        }
+        if (!msg.from || !phoneNumberId) continue;
 
         marcarLeido(phoneNumberId, msg.id).catch(() => {});
 

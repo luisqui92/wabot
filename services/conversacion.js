@@ -41,9 +41,18 @@ async function procesarMensajeEntrante({ phoneNumberId, numero, texto, nombrePer
 
   await agregarMensaje(conversacion, { rol: "cliente", texto });
 
+  // Se loguea el largo del mensaje y NO su contenido: los logs son para
+  // operar (¿llegó? ¿respondimos?), y el texto de lo que escribe un cliente
+  // es dato suyo — está en el panel, que es donde corresponde leerlo, y no
+  // desparramado en archivos de log que van a parar a cualquier lado.
+  log.info(`[CONV] ${numero} -> mensaje recibido (${texto.length} chars)`);
+
   // Una persona tomó la conversación: el bot se calla, pero el mensaje del
   // cliente igual queda guardado (arriba) para que lo vea en el panel.
-  if (conversacion.pausado) return;
+  if (conversacion.pausado) {
+    log.info(`[CONV] ${numero} — conversación pausada, el bot no responde`);
+    return;
+  }
 
   // El historial que ve la IA excluye el mensaje que se acaba de guardar —
   // ese va aparte como la consulta actual, y duplicarlo hace que el modelo
@@ -66,6 +75,7 @@ async function procesarMensajeEntrante({ phoneNumberId, numero, texto, nombrePer
 
   await agregarMensaje(conversacion, { rol: "bot", texto: salida.respuesta, sinRespuesta: salida.noSe });
   await enviarTexto(phoneNumberId, numero, salida.respuesta);
+  log.info(`[CONV] ${numero} <- respondido${salida.noSe ? " (SIN INFO: falta cargar esto en la base)" : ""}`);
 
   if (salida.noSe && negocio.numeroEscalamiento) {
     // Aviso al humano de guardia. Va en su propio try: que falle el aviso

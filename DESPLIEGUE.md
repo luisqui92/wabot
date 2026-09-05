@@ -18,7 +18,7 @@ lugar cada tanto; lo que no encuentres está bajo *Advanced options*):
 | **Series** | E2 | |
 | **Machine type** | **e2-small** (2 vCPU, 2 GB) | Ver abajo. Esto **sí** se cambia después, apagando la VM. |
 | **Provisioning model** | **Standard** | **Nunca Spot.** Google las apaga cuando necesita capacidad, con 30 s de aviso. Un bot que contesta WhatsApp no puede vivir ahí. |
-| **Boot disk** → Change | Debian GNU/Linux **13 (trixie)**, Balanced persistent disk, **20 GB** | ⚠️ El default son **10 GB**: subilo. Debian 13 trae Node 20 de fábrica (el 12 trae Node 18) y MongoDB publica repo para trixie, así que no hace falta agregar ningún repo de terceros para Node. |
+| **Boot disk** → Change | Debian GNU/Linux **12 (bookworm)**, Balanced persistent disk, **20 GB** | ⚠️ El default son **10 GB**: subilo. Y **12, no 13** — ver abajo. |
 | **Firewall** | ☑ Allow HTTP ☑ Allow HTTPS | Sin esto no llegan ni el navegador ni Let's Encrypt. |
 | **Identity and API access** | por defecto | Esta VM no necesita permisos sobre el proyecto. |
 | **Deletion protection** (Advanced → Management) | activada | Un click, evita un borrado por accidente. |
@@ -27,6 +27,28 @@ lugar cada tanto; lo que no encuentres está bajo *Advanced options*):
 
 El panel de la derecha estima el costo mensual de tu región. Miralo antes de
 crear.
+
+### Por qué Debian 12 y no 13
+
+Debian 13 (trixie) es más nuevo y trae Node 20 de fábrica, así que parece la
+mejor opción. No lo es: **MongoDB todavía no publica el servidor para trixie.**
+
+El repo existe y está firmado —por eso engaña— pero solo contiene el cliente:
+
+```bash
+# trixie: solo mongodb-mongosh
+curl -s https://repo.mongodb.org/apt/debian/dists/trixie/mongodb-org/8.0/main/binary-amd64/Packages | grep -c '^Package: mongodb-org$'    # -> 0
+# bookworm: el servidor completo
+curl -s https://repo.mongodb.org/apt/debian/dists/bookworm/mongodb-org/8.0/main/binary-amd64/Packages | grep -c '^Package: mongodb-org$'  # -> 1
+```
+
+En trixie, `apt install mongodb-org` falla con `Unable to locate package` después
+de que el repo se agregó sin errores — un síntoma que no señala la causa.
+
+Debian 12 tiene soporte hasta 2028 y su Node 18 cubre lo que pide la app
+(`engines: node >=18`). Antes de elegir una distro más nueva, comprobá que el
+servidor esté ahí con el `grep -c` de arriba: que el `Release` responda 200 no
+alcanza.
 
 ### Por qué e2-small y no e2-micro
 
@@ -87,24 +109,25 @@ echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
 
 ## 4. Node, nginx, certbot
 
-En Debian 13 (trixie) todo sale de los repos oficiales — Node 20 viene incluido:
+Todo sale de los repos oficiales de Debian 12 — el `nodejs` de bookworm es la
+18, que es lo que pide la app:
 
 ```bash
 sudo apt install -y nodejs npm nginx certbot python3-certbot-nginx git gnupg
 sudo npm install -g pm2
 ```
 
-`gnupg` está en la lista porque la imagen mínima de Debian 13 **no lo trae**, y
+`gnupg` está en la lista porque la imagen mínima de Debian **no lo trae**, y
 sin él el paso 5 falla de una forma que no se lee como la causa: `gpg: command
 not found` pasa desapercibido, la clave nunca se crea, y lo que ves después es
 apt rechazando el repo de MongoDB por "no firmado".
 
-✅ **Verificar:** `node -v` da v20.x (la app pide ≥18), `nginx -v` responde y
-`command -v gpg` devuelve una ruta.
+✅ **Verificar:** `command -v node nginx certbot gpg` devuelve **las cuatro**
+rutas, y `node -v` da v18 o superior. Si falta alguna, el paquete no se instaló
+—no supongas que sí— y lo que se rompe es un paso más adelante.
 
-> En Debian 12 el `nodejs` de los repos es la 18, que también sirve. Si
-> necesitás una versión más nueva ahí, el repo de NodeSource ya no usa el nombre
-> de la distro — es `nodistro` para todas:
+> Si querés Node 20 en Debian 12, el repo de NodeSource ya no usa el nombre de
+> la distro: es `nodistro` para todas.
 >
 > ```bash
 > curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key \
@@ -128,7 +151,9 @@ curl -fsSL https://www.mongodb.org/static/pgp/server-8.0.asc \
 echo "deb [signed-by=/usr/share/keyrings/mongodb.gpg] https://repo.mongodb.org/apt/debian $CODENAME/mongodb-org/8.0 main" \
   | sudo tee /etc/apt/sources.list.d/mongodb.list
 ls -l /usr/share/keyrings/mongodb.gpg     # comprobá que existe ANTES de seguir
-sudo apt update && sudo apt install -y mongodb-org
+sudo apt update
+apt-cache policy mongodb-org             # si no lista candidato, tu distro no tiene servidor
+sudo apt install -y mongodb-org
 sudo systemctl enable --now mongod
 ```
 

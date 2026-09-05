@@ -316,13 +316,11 @@ pm2 logs wabot --lines 50
 
 Sé honesto con esto antes de poner clientes reales:
 
-- **No hay respaldos.** Una VM propia significa que las copias son tuyas: si se
-  pierde el disco, se pierden la base de conocimiento y todas las
-  conversaciones. Vitalis tiene un `RESPALDOS.md` con copias diarias que se
-  verifican restaurándolas; wabot todavía no tiene nada equivalente. Las
-  instantáneas programadas del paso 1 son el piso, no el techo: recuperan el
-  disco entero de ayer, no la base de esta mañana, y nadie las probó
-  restaurándolas.
+- **Los respaldos hay que activarlos.** Existe el módulo —copia diaria cifrada
+  que se verifica restaurándola, ver [`RESPALDOS.md`](RESPALDOS.md)— pero sin
+  `BACKUP_CLAVE` en el `.env` y sin el cron, no corre. Las instantáneas
+  programadas del paso 1 son el piso, no el techo: recuperan el disco entero de
+  ayer, no la base de esta mañana, y nadie las probó restaurándolas.
 - **No hay monitoreo.** Si `pm2` reinicia la app en loop o `mongod` muere, nadie
   te avisa. `pm2 logs` es lo que hay.
 - **Actualizaciones de seguridad.** VM aparte, parches aparte: `unattended-upgrades`

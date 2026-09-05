@@ -100,6 +100,44 @@ const fragmentoSchema = new mongoose.Schema({
 });
 const Fragmento = mongoose.model("Fragmento", fragmentoSchema);
 
+// ─── CLIENTE ────────────────────────────────────────────────────────────────
+// Quién es la persona, separado de lo que dijo. Va en su propia colección y no
+// como campos dentro de Conversacion porque son cosas distintas con vidas
+// distintas: la conversación es un hilo, el cliente es alguien que puede tener
+// varios hilos —hoy uno de WhatsApp, mañana también de Instagram—. Separarlo
+// ahora cuesta un índice; separarlo después cuesta migrar todo el historial.
+const clienteSchema = new mongoose.Schema({
+  negocioId: { type: mongoose.Schema.Types.ObjectId, ref: "Negocio", required: true, index: true },
+  numero: { type: String, required: true, index: true },
+
+  // El de WhatsApp lo pone el propio cliente en su perfil; el dueño puede
+  // corregirlo desde el panel y ahí manda el suyo, porque "Juanjo 🔥" no es
+  // como quiere llamarlo su proveedor.
+  nombrePerfil: { type: String, default: "" },
+  nombre: { type: String, default: "" },
+
+  // Lo que el dueño anota a mano: "paga a 30 días", "prefiere que le escriban
+  // de mañana". Es memoria que ninguna IA puede deducir de una conversación.
+  notas: { type: String, default: "" },
+
+  // Lo que el modelo entendió de esta persona a partir de sus conversaciones.
+  // Se regenera cada tantos mensajes, no en cada uno — ver services/cliente.js.
+  resumen: { type: String, default: "" },
+  resumenActualizadoEn: { type: Date, default: null },
+  // Cuántos mensajes entraron desde el último resumen. Es el disparador: sin
+  // este contador habría que releer la conversación entera para saber si el
+  // resumen quedó viejo.
+  mensajesDesdeResumen: { type: Number, default: 0 },
+
+  etiquetas: { type: [String], default: [] },
+
+  primerContacto: { type: Date, default: Date.now },
+  ultimoContacto: { type: Date, default: Date.now, index: true },
+  totalMensajes: { type: Number, default: 0 },
+});
+clienteSchema.index({ negocioId: 1, numero: 1 }, { unique: true });
+const Cliente = mongoose.model("Cliente", clienteSchema);
+
 // ─── CONVERSACION ───────────────────────────────────────────────────────────
 // Una por (negocio, numero). Los mensajes van embebidos y recortados: el
 // historial completo de un cliente frecuente puede ser de miles de mensajes,
@@ -116,6 +154,7 @@ const mensajeSchema = new mongoose.Schema({
 const conversacionSchema = new mongoose.Schema({
   negocioId: { type: mongoose.Schema.Types.ObjectId, ref: "Negocio", required: true, index: true },
   numero: { type: String, required: true, index: true },
+  clienteId: { type: mongoose.Schema.Types.ObjectId, ref: "Cliente", default: null, index: true },
   nombrePerfil: { type: String, default: "" },
   mensajes: { type: [mensajeSchema], default: [] },
 
@@ -129,4 +168,4 @@ const conversacionSchema = new mongoose.Schema({
 conversacionSchema.index({ negocioId: 1, numero: 1 }, { unique: true });
 const Conversacion = mongoose.model("Conversacion", conversacionSchema);
 
-module.exports = { Negocio, Usuario, Documento, Fragmento, Conversacion };
+module.exports = { Negocio, Usuario, Documento, Fragmento, Cliente, Conversacion };

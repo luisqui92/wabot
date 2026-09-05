@@ -54,3 +54,11 @@ main { padding: 24px 20px 60px; max-width: 1100px; margin: 0 auto; }
 .burbuja.humano { background: #1f4030; margin-left: auto; }
 .burbuja.sin-respuesta { border: 1px solid #6b5518; }
 .responder { display: flex; gap: 8px; margin-top: 12px; }
+
+/* ─── Clientes ─────────────────────────────────────────────────────────── */
+#buscar-clientes { margin-bottom: 12px; max-width: 320px; }
+.ficha { background: #12203a; border: 1px solid #1e3a6b; border-radius: 8px; padding: 10px 12px; margin: 10px 0; font-size: 13px; white-space: pre-wrap; }
+.ficha h4 { margin: 0 0 6px; font-size: 12px; color: var(--suave); text-transform: uppercase; letter-spacing: .04em; }
+.campos { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; }
+.etiquetas { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.meta { color: var(--suave); font-size: 12px; margin: 2px 0; }

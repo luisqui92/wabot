@@ -6,6 +6,7 @@ const { CONFIG, log } = require("../config");
 const { Negocio, Conversacion } = require("../db/models");
 const { responder } = require("./asistenteIA");
 const { enviarTexto } = require("./metaWhatsapp");
+const { obtenerOCrear, armarContexto, refrescarResumenSiCorresponde } = require("./cliente");
 
 // El historial embebido se recorta al guardar y no al leer: si solo se
 // recortara al leer, un cliente de años haria crecer el documento hasta el
@@ -32,11 +33,19 @@ async function procesarMensajeEntrante({ phoneNumberId, numero, texto, nombrePer
   }
   if (!negocio.activo) return;
 
+  // El cliente se resuelve siempre, incluso si la conversación está pausada:
+  // que atienda una persona no significa que deje de contar como contacto.
+  const cliente = await obtenerOCrear(negocio._id, numero, nombrePerfil);
+
   let conversacion = await Conversacion.findOne({ negocioId: negocio._id, numero });
   if (!conversacion) {
-    conversacion = new Conversacion({ negocioId: negocio._id, numero, nombrePerfil });
-  } else if (nombrePerfil && conversacion.nombrePerfil !== nombrePerfil) {
-    conversacion.nombrePerfil = nombrePerfil;
+    conversacion = new Conversacion({ negocioId: negocio._id, numero, nombrePerfil, clienteId: cliente._id });
+  } else {
+    if (nombrePerfil && conversacion.nombrePerfil !== nombrePerfil) conversacion.nombrePerfil = nombrePerfil;
+    // Las conversaciones creadas antes de que existiera Cliente no tienen
+    // clienteId. Se enlazan solas la próxima vez que el cliente escribe, sin
+    // script de migración.
+    if (!conversacion.clienteId) conversacion.clienteId = cliente._id;
   }
 
   await agregarMensaje(conversacion, { rol: "cliente", texto });
@@ -64,7 +73,7 @@ async function procesarMensajeEntrante({ phoneNumberId, numero, texto, nombrePer
 
   let salida;
   try {
-    salida = await responder(negocio, texto, historial);
+    salida = await responder(negocio, texto, historial, armarContexto(cliente));
   } catch (e) {
     log.error("[CONV] Falló la IA:", e.response?.data?.error?.message || e.message);
     // Caer en silencio deja al cliente esperando sin saber que pasó. Se
@@ -76,6 +85,10 @@ async function procesarMensajeEntrante({ phoneNumberId, numero, texto, nombrePer
   await agregarMensaje(conversacion, { rol: "bot", texto: salida.respuesta, sinRespuesta: salida.noSe });
   await enviarTexto(phoneNumberId, numero, salida.respuesta);
   log.info(`[CONV] ${numero} <- respondido${salida.noSe ? " (SIN INFO: falta cargar esto en la base)" : ""}`);
+
+  // Después de responder, nunca antes: la ficha es nuestra, la espera es del
+  // cliente. Si esto falla o tarda, la conversación ya terminó bien.
+  refrescarResumenSiCorresponde(cliente, conversacion.mensajes);
 
   if (salida.noSe && negocio.numeroEscalamiento) {
     // Aviso al humano de guardia. Va en su propio try: que falle el aviso

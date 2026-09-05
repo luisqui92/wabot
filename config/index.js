@@ -31,6 +31,10 @@ const CONFIG = {
 
   OPENAI_KEY: process.env.OPENAI_KEY,
   OPENAI_MODELO: process.env.OPENAI_MODELO || "gpt-4o-mini",
+  // Configurable para poder apuntar a un endpoint compatible (o a un stub en
+  // las pruebas) sin tocar código. Cambiar de proveedor sigue siendo tocar
+  // asistenteIA.js, pero uno compatible con la API de OpenAI entra por acá.
+  OPENAI_BASE_URL: (process.env.OPENAI_BASE_URL || "https://api.openai.com/v1").replace(/\/+$/, ""),
   TIMEOUT_OPENAI: 45000,
 
   // WHATSAPP_TOKEN: token de acceso (Meta -> tu app -> WhatsApp -> API Setup).

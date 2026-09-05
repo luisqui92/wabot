@@ -72,6 +72,7 @@ function entrar() {
 const CARGADORES = {
   bot: cargarNegocio,
   conocimiento: cargarConocimiento,
+  clientes: cargarClientes,
   conversaciones: cargarConversaciones,
   huecos: cargarHuecos,
 };
@@ -207,6 +208,104 @@ async function cargarConocimiento() {
   }
 }
 
+// ─── CLIENTES ───────────────────────────────────────────────────────────────
+let temporizadorBusqueda;
+$("#buscar-clientes").addEventListener("input", () => {
+  // Se espera a que deje de tipear: sin esto es una consulta por tecla.
+  clearTimeout(temporizadorBusqueda);
+  temporizadorBusqueda = setTimeout(() => cargarClientes().catch(mostrarError), 300);
+});
+
+function fecha(d) {
+  return d ? new Date(d).toLocaleDateString("es-BO", { day: "numeric", month: "short", year: "numeric" }) : "—";
+}
+
+async function cargarClientes() {
+  const q = $("#buscar-clientes").value.trim();
+  const clientes = await api(`/clientes${q ? `?q=${encodeURIComponent(q)}` : ""}`);
+  const cont = $("#lista-clientes");
+  cont.replaceChildren();
+  if (!clientes.length) {
+    cont.append(el("p", "nota", q ? "Ningún cliente coincide." : "Todavía no escribió nadie."));
+    return;
+  }
+  for (const c of clientes) {
+    const item = el("div", "item");
+    const fila = el("div", "fila");
+    fila.append(el("h3", null, c.nombre || c.nombrePerfil || c.numero));
+    if (c.resumen) fila.append(el("span", "badge", "con ficha"));
+    item.append(fila);
+    item.append(el("p", "meta", `${c.numero} · ${c.totalMensajes} mensaje${c.totalMensajes === 1 ? "" : "s"} · último ${fecha(c.ultimoContacto)}`));
+    item.style.cursor = "pointer";
+    item.addEventListener("click", () => abrirCliente(c._id).catch(mostrarError));
+    cont.append(item);
+  }
+}
+
+async function abrirCliente(id) {
+  const c = await api(`/clientes/${id}`);
+  const d = $("#detalle-cliente");
+  d.replaceChildren();
+
+  d.append(el("h3", null, c.nombre || c.nombrePerfil || c.numero));
+  d.append(el("p", "meta", `${c.numero} · cliente desde ${fecha(c.primerContacto)} · ${c.totalMensajes} mensajes`));
+
+  // La ficha primero: es lo que el bot está usando ahora mismo, y es lo que el
+  // dueño quiere ver cuando abre a un cliente.
+  const ficha = el("div", "ficha");
+  ficha.append(el("h4", null, c.resumenActualizadoEn ? `Ficha de la IA — ${fecha(c.resumenActualizadoEn)}` : "Ficha de la IA"));
+  ficha.append(el("div", null, c.resumen || "Todavía no hay suficiente conversación para armar una ficha."));
+  d.append(ficha);
+
+  const regenerar = el("button", "sutil", "Regenerar ficha");
+  regenerar.addEventListener("click", async () => {
+    regenerar.disabled = true; regenerar.textContent = "Leyendo la conversación…";
+    try { await api(`/clientes/${id}/resumen`, { method: "POST" }); await abrirCliente(id); }
+    catch (err) { mostrarError(err); regenerar.disabled = false; regenerar.textContent = "Regenerar ficha"; }
+  });
+  d.append(regenerar);
+
+  const campos = el("div", "campos");
+  const lNombre = el("label", null, "Nombre (el que uses vos, no el de su perfil)");
+  const iNombre = el("input"); iNombre.value = c.nombre || ""; iNombre.placeholder = c.nombrePerfil || "";
+  lNombre.append(iNombre);
+
+  const lNotas = el("label", null, "Notas — lo que la IA no puede deducir: cómo paga, qué prefiere, qué pasó la última vez");
+  const iNotas = el("textarea"); iNotas.rows = 4; iNotas.value = c.notas || "";
+  lNotas.append(iNotas);
+
+  const lEtiq = el("label", null, "Etiquetas, separadas por coma");
+  const iEtiq = el("input"); iEtiq.value = (c.etiquetas || []).join(", ");
+  lEtiq.append(iEtiq);
+
+  const guardar = el("button", null, "Guardar");
+  const estado = el("span", "estado");
+  guardar.addEventListener("click", async () => {
+    try {
+      await api(`/clientes/${id}`, { method: "PUT", body: JSON.stringify({
+        nombre: iNombre.value,
+        notas: iNotas.value,
+        etiquetas: iEtiq.value.split(",").map(e => e.trim()).filter(Boolean),
+      }) });
+      estado.textContent = "Guardado ✓";
+      setTimeout(() => { estado.textContent = ""; }, 2500);
+      await cargarClientes();
+    } catch (err) { mostrarError(err); }
+  });
+
+  campos.append(lNombre, lNotas, lEtiq, guardar, estado);
+  d.append(campos);
+
+  if (c.conversacionId) {
+    const verConv = el("button", "sutil", "Ver la conversación");
+    verConv.addEventListener("click", () => {
+      document.querySelector('[data-tab="conversaciones"]').click();
+      setTimeout(() => abrirConversacion(c.conversacionId).catch(mostrarError), 100);
+    });
+    d.append(verConv);
+  }
+}
+
 // ─── CONVERSACIONES ─────────────────────────────────────────────────────────
 async function cargarConversaciones() {
   const convs = await api("/conversaciones");
@@ -240,6 +339,15 @@ async function abrirConversacion(id) {
   });
   cabecera.append(btnPausa);
   d.append(cabecera);
+
+  // La ficha, junto al hilo: quien atiende necesita saber con quién habla sin
+  // tener que cambiar de pestaña.
+  if (c.cliente?.resumen || c.cliente?.notas) {
+    const ficha = el("div", "ficha");
+    ficha.append(el("h4", null, "Quién es"));
+    ficha.append(el("div", null, [c.cliente.resumen, c.cliente.notas].filter(Boolean).join("\n\n")));
+    d.append(ficha);
+  }
 
   for (const m of c.mensajes) {
     const b = el("div", `burbuja ${m.rol}${m.sinRespuesta ? " sin-respuesta" : ""}`, m.texto);

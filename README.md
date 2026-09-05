@@ -168,12 +168,13 @@ URL ya armada con el prefijo — copiala de ahí en vez de escribirla a mano.
 
 ```
 config/index.js            CONFIG, logger, validación al arrancar
-db/models.js               Negocio, Usuario, Documento, Fragmento, Conversacion
+db/models.js               Negocio, Usuario, Documento, Fragmento, Cliente, Conversacion
 services/
   metaWhatsapp.js          envío por la Graph API + verificación de firma
   asistenteIA.js           el prompt y la llamada al modelo
   baseConocimiento.js      fragmentado y armado del contexto
   conversacion.js          orquestación de un mensaje entrante
+  cliente.js               memoria: quién es cada persona y su ficha
   auth.js                  bcrypt + token firmado para el panel
   httpHelpers.js           asyncRoute, ErrorHttp, aislamiento por negocio
 routes/

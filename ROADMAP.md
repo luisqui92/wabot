@@ -132,12 +132,14 @@ de ayer, no la base de esta mañana, y nadie las probó restaurándolas.
 Una copia que nunca se restauró no es una copia. Se hace primero porque es el
 único módulo cuya ausencia puede borrar todo lo demás.
 
-### Módulo 1 — Memoria del cliente
-Quién es, qué preguntó antes, qué compró. Es lo que más cambia la experiencia
-por lo que cuesta: son campos en `Conversacion` más un resumen que ya se puede
-armar con el modelo que se está pagando igual.
+### Módulo 1 — Memoria del cliente ✅ HECHO
+Colección `Cliente` separada de `Conversacion` —una persona puede tener varios
+hilos el día que haya más canales—, con nombre y notas del dueño, etiquetas, y
+una ficha que escribe el modelo cada 8 mensajes y en segundo plano, para no
+pagar una llamada por cada línea ni hacer esperar al cliente.
 
-Diferenciador real y barato. Va primero de las funciones.
+Pendiente encima de esto: que la ficha alimente el lead scoring, y agregar por
+rubro lo que revelan las fichas (ver el foso del punto 3).
 
 ### Módulo 2 — Acciones (tools)
 Que el bot **haga** en vez de explicar cómo hacer. `consultar_precio()`,

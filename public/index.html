@@ -27,6 +27,7 @@
     <nav>
       <button data-tab="bot" class="tab activa">Bot</button>
       <button data-tab="conocimiento" class="tab">Conocimiento</button>
+      <button data-tab="clientes" class="tab">Clientes</button>
       <button data-tab="conversaciones" class="tab">Conversaciones</button>
       <button data-tab="huecos" class="tab">Huecos</button>
     </nav>
@@ -71,6 +72,16 @@
       <h2>Correcciones sueltas</h2>
       <p class="nota">Datos que agregaste a mano, normalmente desde una conversación en la que el bot falló.</p>
       <div id="lista-correcciones" class="lista"></div>
+    </section>
+
+    <!-- ─── CLIENTES ────────────────────────────────────────────────── -->
+    <section id="tab-clientes" class="panel oculto">
+      <p class="nota">Lo que el bot sabe de cada persona. La ficha la escribe la IA sola; el nombre, las notas y las etiquetas los ponés vos.</p>
+      <input id="buscar-clientes" placeholder="Buscar por nombre o número…">
+      <div class="split">
+        <div id="lista-clientes" class="lista"></div>
+        <div id="detalle-cliente" class="detalle"><p class="nota">Elegí un cliente.</p></div>
+      </div>
     </section>
 
     <!-- ─── CONVERSACIONES ──────────────────────────────────────────── -->

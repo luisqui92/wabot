@@ -2,11 +2,12 @@
 // de requireAuth y filtrado por req.sesion.negocioId: ningún endpoint acepta
 // un negocioId que venga del cliente, porque eso sería dejar que un negocio
 // lea o edite la base de conocimiento de otro.
-const { Negocio, Usuario, Documento, Fragmento, Conversacion } = require("../db/models");
+const { Negocio, Usuario, Documento, Fragmento, Cliente, Conversacion } = require("../db/models");
 const { verificarPassword, generarToken, requireAuth } = require("../services/auth");
 const { asyncRoute, ErrorHttp, obtenerOFallar } = require("../services/httpHelpers");
 const { fragmentar, armarContexto } = require("../services/baseConocimiento");
 const { agregarMensaje } = require("../services/conversacion");
+const { actualizarResumen } = require("../services/cliente");
 const { enviarTexto } = require("../services/metaWhatsapp");
 
 const auth = requireAuth(["admin"]);
@@ -131,6 +132,49 @@ module.exports = function (app) {
     res.json({ ok: true });
   }));
 
+  // ─── CLIENTES ────────────────────────────────────────────────────────────
+  app.get("/api/clientes", auth, asyncRoute(async (req, res) => {
+    const filtro = { negocioId: req.sesion.negocioId };
+    // Búsqueda por número o nombre. El dueño busca "el que preguntó por el
+    // delivery", no un ObjectId.
+    if (req.query.q) {
+      const q = new RegExp(String(req.query.q).replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
+      filtro.$or = [{ numero: q }, { nombre: q }, { nombrePerfil: q }];
+    }
+    res.json(await Cliente.find(filtro).sort({ ultimoContacto: -1 }).limit(200).lean());
+  }));
+
+  app.get("/api/clientes/:id", auth, asyncRoute(async (req, res) => {
+    const cliente = await obtenerOFallar(Cliente, { _id: req.params.id, negocioId: req.sesion.negocioId }, "Cliente no encontrado");
+    const conversacion = await Conversacion.findOne({ clienteId: cliente._id, negocioId: req.sesion.negocioId }).lean();
+    res.json({ ...cliente.toObject(), conversacionId: conversacion?._id || null });
+  }));
+
+  app.put("/api/clientes/:id", auth, asyncRoute(async (req, res) => {
+    const cliente = await obtenerOFallar(Cliente, { _id: req.params.id, negocioId: req.sesion.negocioId }, "Cliente no encontrado");
+    // nombre, notas y etiquetas son del dueño. "resumen" NO está en la lista:
+    // lo escribe el modelo y se regenera solo, así que dejarlo editable sería
+    // ofrecer un campo que se pisa a sí mismo cada ocho mensajes.
+    if (req.body.nombre !== undefined) cliente.nombre = String(req.body.nombre).trim();
+    if (req.body.notas !== undefined) cliente.notas = String(req.body.notas);
+    if (Array.isArray(req.body.etiquetas)) {
+      cliente.etiquetas = req.body.etiquetas.map(e => String(e).trim()).filter(Boolean).slice(0, 10);
+    }
+    await cliente.save();
+    res.json(cliente);
+  }));
+
+  // Regenerar la ficha a mano, sin esperar a que se junten mensajes. Sirve
+  // cuando el dueño acaba de tener una conversación larga y quiere que el bot
+  // ya la tenga incorporada.
+  app.post("/api/clientes/:id/resumen", auth, asyncRoute(async (req, res) => {
+    const cliente = await obtenerOFallar(Cliente, { _id: req.params.id, negocioId: req.sesion.negocioId }, "Cliente no encontrado");
+    const conversacion = await Conversacion.findOne({ clienteId: cliente._id, negocioId: req.sesion.negocioId });
+    if (!conversacion?.mensajes?.length) throw new ErrorHttp(400, "Todavía no hay conversación de la cual armar una ficha");
+    await actualizarResumen(cliente, conversacion.mensajes);
+    res.json(await Cliente.findById(cliente._id).lean());
+  }));
+
   // ─── CONVERSACIONES ──────────────────────────────────────────────────────
   app.get("/api/conversaciones", auth, asyncRoute(async (req, res) => {
     const convs = await Conversacion.find({ negocioId: req.sesion.negocioId })
@@ -151,7 +195,11 @@ module.exports = function (app) {
   }));
 
   app.get("/api/conversaciones/:id", auth, asyncRoute(async (req, res) => {
-    res.json(await obtenerOFallar(Conversacion, { _id: req.params.id, negocioId: req.sesion.negocioId }, "Conversación no encontrada"));
+    const conversacion = await obtenerOFallar(Conversacion, { _id: req.params.id, negocioId: req.sesion.negocioId }, "Conversación no encontrada");
+    const cliente = conversacion.clienteId
+      ? await Cliente.findOne({ _id: conversacion.clienteId, negocioId: req.sesion.negocioId }).lean()
+      : null;
+    res.json({ ...conversacion.toObject(), cliente });
   }));
 
   // Tomar o soltar la conversación. Con pausado=true el bot deja de

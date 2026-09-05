@@ -192,6 +192,19 @@ PORT=3000
 Y las de Meta e IA (`WHATSAPP_TOKEN`, `WHATSAPP_VERIFY_TOKEN`, `META_APP_SECRET`,
 `OPENAI_KEY`) — se pueden completar después, el panel levanta igual.
 
+El `<phoneNumberId>` es el **ID interno del número** que da Meta (WhatsApp →
+API Setup), no el número de teléfono. Si todavía no creaste la app de Meta,
+poné `000000` y corregilo después con:
+
+```bash
+node scripts/cambiar_numero.js                       # lista los negocios
+node scripts/cambiar_numero.js <negocioId> <idReal>
+```
+
+Es un script y no una opción del panel a propósito: cambiar ese ID desconecta
+al bot de su número, y el síntoma recién aparece cuando un cliente escribe y no
+le contesta nadie.
+
 ```bash
 node scripts/crear_usuario.js "Mi Negocio" <phoneNumberId> tu@mail.com <password>
 pm2 start index.js --name wabot

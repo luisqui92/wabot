@@ -181,6 +181,7 @@ routes/
   panel.js                 API del panel
 public/                    el panel (sin framework, sin build)
 scripts/crear_usuario.js   alta del negocio y del primer usuario
+scripts/cambiar_numero.js  corrige el phoneNumberId de Meta de un negocio
 ```
 
 ## Decisiones y límites conocidos

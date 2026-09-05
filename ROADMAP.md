@@ -71,12 +71,20 @@ Wati y Respond.io no van a construir integración con facturación electrónica
 boliviana, QR Simple ni Tigo Money — el mercado no les justifica el esfuerzo.
 Para nosotros es el foso.
 
-### 2. Distribución que ya existe
-ChatGo tiene clientes y Vitalis está adentro de consultorios. Vender a quien ya
-te conoce es la ventaja que la mayoría de las startups no tiene y no puede
-comprar. **Un "Wabot para consultorios" enchufado a la agenda de Vitalis es
-algo que literalmente ningún competidor puede hacer**, porque nadie más tiene
-Vitalis.
+### 2. Distribución — que hay que construir, no que ya existe
+Wabot es un producto independiente. No se apoya en ningún otro sistema propio
+ni comparte datos con ninguno.
+
+Eso hay que decirlo sin maquillaje: **la distribución es la parte que todavía
+no está**. Los competidores tienen equipos de ventas y presupuesto de
+marketing; el producto no se vende solo por ser mejor.
+
+Lo que sí hay es cercanía al mercado — se entiende cómo compra una pyme
+boliviana, qué usa y qué le duele, y eso desde afuera no se compra. Pero es un
+punto de partida, no un foso. El foso de distribución se construye vendiendo:
+los primeros diez clientes de un mismo rubro valen más que diez clientes
+sueltos de rubros distintos, porque hacen que el rubro entero se venda solo
+después (ver punto 3).
 
 ### 3. El efecto de red del conocimiento
 Este es el único foso que **crece solo**, y sale de algo que ya está construido:
@@ -93,7 +101,14 @@ Profundidad en un rubro antes que amplitud en todos. Un producto que resuelve
 **completo** un vertical —con las integraciones locales que nadie más va a
 hacer— vale más que uno genérico con dieciséis módulos a medias.
 
-Empezar por el vertical donde ya estamos adentro.
+El vertical se elige por dónde se puede vender rápido y dónde el bot resuelve
+algo caro de verdad: un negocio que hoy paga a alguien para contestar WhatsApp
+todo el día tiene un número concreto contra el cual comparar el precio. Sin ese
+número, la venta se convierte en explicar qué es la IA.
+
+Y de los dos fosos que sí crecen —integraciones locales y conocimiento por
+rubro— **el segundo solo aparece con varios clientes del mismo rubro**. Diez
+clientes de un vertical valen más que diez de diez verticales distintos.
 
 ## Lo que hay hoy
 

@@ -18,10 +18,12 @@ lugar cada tanto; lo que no encuentres está bajo *Advanced options*):
 | **Series** | E2 | |
 | **Machine type** | **e2-small** (2 vCPU, 2 GB) | Ver abajo. Esto **sí** se cambia después, apagando la VM. |
 | **Provisioning model** | **Standard** | **Nunca Spot.** Google las apaga cuando necesita capacidad, con 30 s de aviso. Un bot que contesta WhatsApp no puede vivir ahí. |
-| **Boot disk** → Change | Debian GNU/Linux **12 (bookworm)**, Balanced persistent disk, **20 GB** | El default son 10 GB: subilo. Y elegí Debian 12 para que los comandos de MongoDB del paso 5 sirvan tal cual. |
+| **Boot disk** → Change | Debian GNU/Linux **13 (trixie)**, Balanced persistent disk, **20 GB** | ⚠️ El default son **10 GB**: subilo. Debian 13 trae Node 20 de fábrica (el 12 trae Node 18) y MongoDB publica repo para trixie, así que no hace falta agregar ningún repo de terceros para Node. |
 | **Firewall** | ☑ Allow HTTP ☑ Allow HTTPS | Sin esto no llegan ni el navegador ni Let's Encrypt. |
 | **Identity and API access** | por defecto | Esta VM no necesita permisos sobre el proyecto. |
 | **Deletion protection** (Advanced → Management) | activada | Un click, evita un borrado por accidente. |
+| **Protección de datos** → Programaciones de instantáneas | **activala** | Es el respaldo mínimo del disco, y se configura acá en dos clicks. No reemplaza a un dump de Mongo verificado, pero es la diferencia entre perder todo y perder un día. |
+| **Observabilidad** → Agente de operaciones | **dejalo apagado** | En 2 GB compartidos con MongoDB y Node, el agente se come RAM que vas a extrañar. Activalo cuando la VM tenga aire, no antes. |
 
 El panel de la derecha estima el costo mensual de tu región. Miralo antes de
 crear.
@@ -85,29 +87,46 @@ echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
 
 ## 4. Node, nginx, certbot
 
+En Debian 13 (trixie) todo sale de los repos oficiales — Node 20 viene incluido:
+
 ```bash
-curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
-sudo apt install -y nodejs nginx certbot python3-certbot-nginx git
+sudo apt install -y nodejs npm nginx certbot python3-certbot-nginx git
 sudo npm install -g pm2
 ```
 
 ✅ **Verificar:** `node -v` da v20.x (la app pide ≥18) y `nginx -v` responde.
 
+> En Debian 12 el `nodejs` de los repos es la 18, que también sirve. Si
+> necesitás una versión más nueva ahí, el repo de NodeSource ya no usa el nombre
+> de la distro — es `nodistro` para todas:
+>
+> ```bash
+> curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key \
+>   | sudo gpg --dearmor -o /usr/share/keyrings/nodesource.gpg
+> echo "deb [signed-by=/usr/share/keyrings/nodesource.gpg] https://deb.nodesource.com/node_20.x nodistro main" \
+>   | sudo tee /etc/apt/sources.list.d/nodesource.list
+> sudo apt update && sudo apt install -y nodejs
+> ```
+
 ---
 
 ## 5. MongoDB
 
+El nombre de la distro se toma solo, así el mismo bloque sirve en Debian 12 y
+en 13 (MongoDB publica repo para `bookworm` y para `trixie`):
+
 ```bash
-curl -fsSL https://www.mongodb.org/static/pgp/server-7.0.asc \
+CODENAME=$(. /etc/os-release && echo "$VERSION_CODENAME")
+curl -fsSL https://www.mongodb.org/static/pgp/server-8.0.asc \
   | sudo gpg -o /usr/share/keyrings/mongodb.gpg --dearmor
-echo "deb [signed-by=/usr/share/keyrings/mongodb.gpg] https://repo.mongodb.org/apt/debian bookworm/mongodb-org/7.0 main" \
+echo "deb [signed-by=/usr/share/keyrings/mongodb.gpg] https://repo.mongodb.org/apt/debian $CODENAME/mongodb-org/8.0 main" \
   | sudo tee /etc/apt/sources.list.d/mongodb.list
 sudo apt update && sudo apt install -y mongodb-org
 sudo systemctl enable --now mongod
 ```
 
-> En Ubuntu cambiá `debian bookworm` por `ubuntu noble` (24.04) o `ubuntu jammy`
-> (22.04), y `apt/debian` por `apt/ubuntu`.
+> En Ubuntu, cambiá `apt/debian` por `apt/ubuntu` — el `$CODENAME` se resuelve
+> igual (`noble`, `jammy`).
 
 **No abras Mongo a la red.** Por defecto escucha solo en `127.0.0.1` y así tiene
 que quedarse: la app corre en esta misma VM. Un `mongod` expuesto sin
@@ -255,9 +274,10 @@ Sé honesto con esto antes de poner clientes reales:
 - **No hay respaldos.** Una VM propia significa que las copias son tuyas: si se
   pierde el disco, se pierden la base de conocimiento y todas las
   conversaciones. Vitalis tiene un `RESPALDOS.md` con copias diarias que se
-  verifican restaurándolas; wabot todavía no tiene nada equivalente. Mientras
-  tanto, lo mínimo es un snapshot programado del disco desde
-  Compute Engine → Snapshots.
+  verifican restaurándolas; wabot todavía no tiene nada equivalente. Las
+  instantáneas programadas del paso 1 son el piso, no el techo: recuperan el
+  disco entero de ayer, no la base de esta mañana, y nadie las probó
+  restaurándolas.
 - **No hay monitoreo.** Si `pm2` reinicia la app en loop o `mongod` muere, nadie
   te avisa. `pm2 logs` es lo que hay.
 - **Actualizaciones de seguridad.** VM aparte, parches aparte: `unattended-upgrades`

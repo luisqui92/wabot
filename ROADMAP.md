@@ -45,6 +45,57 @@ por eso está temprano en esta lista.
 
 ---
 
+## De dónde salen estas ideas
+
+La mayoría de los módulos de abajo salieron de la visión de producto del dueño
+del proyecto, no de este documento. **Wabot Actions** (módulo 2), la **memoria
+del cliente** (módulo 1, ya construido), el **radar**, el **modo empleado**, el
+**lead scoring**, los **huecos agrupados**, la **bandeja humana** y el
+**versionado del cerebro** son suyas.
+
+Lo que aporta este documento es el **orden** y las restricciones que lo
+condicionan — no la lista. Y tres ideas propias que están más abajo, en
+"Ideas para diferenciarse".
+
+## Ideas para diferenciarse
+
+Cuatro que no estaban en la visión original y que atacan lo que realmente hace
+fracasar a estos productos:
+
+### A. Que el negocio nunca escriba su base de conocimiento
+Todos los competidores piden sentarse a cargar la información. La mayoría de
+los dueños no lo hace, o lo hace mal, el bot responde mal, y se dan de baja.
+**Esa es la principal causa de baja del rubro, y no es un problema técnico
+sino de fricción.**
+
+La solución: **importar sus conversaciones de WhatsApp**. Cualquier dueño tiene
+años contestando lo mismo, y WhatsApp exporta el chat a `.txt` con un botón.
+De ahí salen los pares pregunta-respuesta reales, con precios reales, y —de
+regalo— su forma de hablar. Onboarding de diez minutos en vez de tres horas.
+
+### B. "Preguntale al dueño", en tiempo real
+Cuando el bot no sabe, hoy dice "te confirmamos" y el cliente espera. Dado
+vuelta: se le manda al dueño la pregunta con tres respuestas sugeridas como
+botones. Toca una desde donde esté, el cliente tiene respuesta en segundos, y
+**esa respuesta queda guardada para siempre**.
+
+Es el módulo de huecos convertido en algo que pasa solo, sin que nadie abra un
+panel. Requiere una plantilla aprobada de categoría *utility* para poder
+escribirle al dueño fuera de su ventana de 24 h.
+
+### C. Audio en serio
+Buena parte de WhatsApp en Bolivia son notas de voz. Los productos globales no
+las priorizan porque en sus mercados pesan menos. Dos lados: el cliente manda
+audio y se le contesta, y **el dueño carga conocimiento grabando dos minutos**
+— la forma más natural de cargar información para quien no quiere escribir.
+
+### D. Trazabilidad de cada respuesta
+Guardar de qué fragmento salió cada respuesta, para poder preguntar "¿por qué
+dijo eso?" y ver la fuente. Parece menor, pero ataca la barrera real de venta:
+el miedo a que el bot le diga una barbaridad a un cliente. No se vende
+explicando que la IA es buena — se vende mostrando que es auditable. Y es
+barato: los fragmentos ya existen, falta guardar cuál se usó.
+
 ## Qué hace defendible a esto (y qué no)
 
 La lista de funciones no es un diferenciador. En 2026 ya se venden, con equipos
@@ -178,6 +229,29 @@ Sin esto, "recuperación de ventas" no es una función: es una infracción.
 
 ### Módulo 7 — Seguimiento automático
 Recién ahora. Se apoya en el 6 para el envío y en el 1 para saber a quién.
+
+### Módulo 7.5 — Modo "empleado"
+Que el dueño configure un **objetivo** ("vender", "resolver dudas", "agendar"),
+**reglas** ("no ofrecer más de 10% de descuento"), **productos prioritarios** y
+una **estrategia** ("preguntar necesidad → recomendar → resolver objeciones").
+
+Técnicamente es hacer configurable el prompt del sistema: cuesta poco. Pero
+cambia el producto de "responde preguntas" a "trabaja para vos", que es la
+diferencia que se puede vender y explicar en una frase.
+
+Se cierra con el radar (módulo 3.5): el radar dice cuál es la objeción
+principal, el modo empleado deja escribir la estrategia para responderla, y las
+métricas dicen si funcionó. Ese ciclo completo no lo tiene armado ningún
+competidor.
+
+### Módulo 3.5 — Radar del negocio
+Analizar todas las conversaciones y devolver lo que el dueño no puede ver
+solo: qué se pregunta más, dónde se caen los clientes, a qué hora escriben,
+cuál es la objeción que más aparece.
+
+Va pegado a las métricas (módulo 3) porque comparten el trabajo de recorrer las
+conversaciones, pero responde otra pregunta: métricas es "cuánto me cuesta",
+radar es "qué me está pasando".
 
 ### Módulo 8 — Versionado del cerebro
 Ya está a mitad de camino: el conocimiento son fragmentos con `activo`. Falta

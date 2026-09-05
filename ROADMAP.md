@@ -45,6 +45,56 @@ por eso está temprano en esta lista.
 
 ---
 
+## Qué hace defendible a esto (y qué no)
+
+La lista de funciones no es un diferenciador. En 2026 ya se venden, con equipos
+y capital detrás:
+
+| Ya existe, con nombre y precio | Quién |
+|---|---|
+| Agentes de IA sobre WhatsApp | Wati (*Astra AI Agents*), AiSensy, Interakt |
+| Agente que califica leads y agenda citas | Waslo |
+| Bandeja omnicanal con ruteo | Respond.io, SleekFlow, Blip |
+| Plataforma pensada para LATAM, con MercadoPago y Tiendanube nativos | Chatsell, ~USD 49/mes |
+
+Los precios de referencia van de USD 15 a 79 por mes de plataforma, más lo que
+cobra Meta por conversación.
+
+Conclusión incómoda: **cualquier función de la lista se copia en semanas**, y
+más ahora que un LLM hace el trabajo pesado. Perseguir "el SaaS más completo
+del mundo" contra empresas financiadas es competir donde ellas son fuertes.
+Lo que sí es difícil de copiar:
+
+### 1. Estar adentro antes que ellos
+El mercado boliviano está en etapa temprana y con poca competencia digital.
+Wati y Respond.io no van a construir integración con facturación electrónica
+boliviana, QR Simple ni Tigo Money — el mercado no les justifica el esfuerzo.
+Para nosotros es el foso.
+
+### 2. Distribución que ya existe
+ChatGo tiene clientes y Vitalis está adentro de consultorios. Vender a quien ya
+te conoce es la ventaja que la mayoría de las startups no tiene y no puede
+comprar. **Un "Wabot para consultorios" enchufado a la agenda de Vitalis es
+algo que literalmente ningún competidor puede hacer**, porque nadie más tiene
+Vitalis.
+
+### 3. El efecto de red del conocimiento
+Este es el único foso que **crece solo**, y sale de algo que ya está construido:
+los huecos. Cada negocio de un rubro revela qué preguntan sus clientes de
+verdad. Agregado y anonimizado por rubro, el cliente número 50 de
+"restaurantes" arranca con un cerebro que ya sabe las 200 preguntas que le van
+a hacer.
+
+Eso no se copia sin los datos, y los datos solo se consiguen operando. Cada
+cliente nuevo mejora el producto para el siguiente.
+
+### La consecuencia práctica
+Profundidad en un rubro antes que amplitud en todos. Un producto que resuelve
+**completo** un vertical —con las integraciones locales que nadie más va a
+hacer— vale más que uno genérico con dieciséis módulos a medias.
+
+Empezar por el vertical donde ya estamos adentro.
+
 ## Lo que hay hoy
 
 Funcionando en producción: bot sobre Cloud API, base de conocimiento por

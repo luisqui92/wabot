@@ -8,15 +8,23 @@ despliegue son en realidad un problema anterior que nadie verificó.
 
 ## 1. Crear la VM
 
-Compute Engine → **Create instance**.
+Compute Engine → **Create instance**. Campo por campo (Google mueve cosas de
+lugar cada tanto; lo que no encuentres está bajo *Advanced options*):
 
-| Campo | Valor | Por qué |
+| Campo | Valor | Cuidado |
 |---|---|---|
-| Región | la misma que tus otras VMs | Nada lo obliga, pero mantiene la latencia y la factura predecibles. |
-| Tipo | **e2-small** (2 vCPU compartidas, 2 GB) | Ver abajo. |
-| Disco | 20 GB, balanced (SSD) | El código pesa poco; el espacio es para Mongo y los logs. |
-| SO | Debian 12 o Ubuntu 24.04 LTS | Cualquiera de los dos; los comandos de acá son para Debian/Ubuntu. |
-| Firewall | ☑ Allow HTTP ☑ Allow HTTPS | Sin esto, ni el navegador ni Let's Encrypt llegan. |
+| **Name** | `wabot` | No se puede renombrar después. |
+| **Region** | la misma que tus otras VMs | **No se cambia después** — para moverla hay que recrear. La zona (`-a`/`-b`/`-c`) da igual. |
+| **Series** | E2 | |
+| **Machine type** | **e2-small** (2 vCPU, 2 GB) | Ver abajo. Esto **sí** se cambia después, apagando la VM. |
+| **Provisioning model** | **Standard** | **Nunca Spot.** Google las apaga cuando necesita capacidad, con 30 s de aviso. Un bot que contesta WhatsApp no puede vivir ahí. |
+| **Boot disk** → Change | Debian GNU/Linux **12 (bookworm)**, Balanced persistent disk, **20 GB** | El default son 10 GB: subilo. Y elegí Debian 12 para que los comandos de MongoDB del paso 5 sirvan tal cual. |
+| **Firewall** | ☑ Allow HTTP ☑ Allow HTTPS | Sin esto no llegan ni el navegador ni Let's Encrypt. |
+| **Identity and API access** | por defecto | Esta VM no necesita permisos sobre el proyecto. |
+| **Deletion protection** (Advanced → Management) | activada | Un click, evita un borrado por accidente. |
+
+El panel de la derecha estima el costo mensual de tu región. Miralo antes de
+crear.
 
 ### Por qué e2-small y no e2-micro
 
@@ -36,8 +44,13 @@ Por defecto GCP asigna una IP **efímera**: cambia cada vez que apagás y prend�
 la VM. Si el DNS apunta a esa IP, el día que reinicies se cae el sitio *y* deja
 de renovar el certificado.
 
-VPC network → IP addresses → **Reserve external static IP address**, y asignásela
-a la VM. Hacelo **antes** de tocar el DNS.
+**Al crear la VM** (lo más limpio): Advanced options → Networking → Network
+interfaces → `default` → **External IPv4 address** → *Create IP address*.
+
+**Si la VM ya existe**, no la recrees: VPC network → **IP addresses**, buscá la
+IP efímera de `wabot` y dale **Reserve**. Te queda la misma IP, ya reservada.
+
+En cualquier caso, hacelo **antes** de tocar el DNS.
 
 ```bash
 gcloud compute addresses create wabot-ip --region=<TU-REGION>

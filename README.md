@@ -184,6 +184,12 @@ scripts/crear_usuario.js   alta del negocio y del primer usuario
 scripts/cambiar_numero.js  corrige el phoneNumberId de Meta de un negocio
 ```
 
+## Hacia dónde va
+
+Qué construir y en qué orden está en [`ROADMAP.md`](ROADMAP.md), junto con las
+dos restricciones de Meta —la ventana de 24 h y el cobro por mensaje desde
+octubre de 2026— que condicionan el diseño de cualquier función de seguimiento.
+
 ## Decisiones y límites conocidos
 
 - **La base de conocimiento entra entera en el prompt**, no hay búsqueda

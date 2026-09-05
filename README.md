@@ -55,6 +55,11 @@ El panel queda en `http://localhost:3000`.
 
 ### En producción, con su propio subdominio
 
+> **Para levantarlo desde cero en una VM nueva, seguí
+> [`DESPLIEGUE.md`](DESPLIEGUE.md)** — VM, swap, MongoDB, nginx, HTTPS y Meta,
+> paso a paso y con una comprobación al final de cada uno. Lo de acá abajo es
+> solo la parte de dominio y proxy.
+
 Es la forma recomendada y la que usa el despliegue actual
 (`wabot.chatgo.ia.bo`). `BASE_PATH` queda vacío: la app vive en la raíz de su
 dominio y no hay ningún prefijo que alinear.

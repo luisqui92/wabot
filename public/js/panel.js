@@ -647,7 +647,8 @@ $("#qr-archivo").addEventListener("change", async (e) => {
 
 $("#btn-guardar-cobros").addEventListener("click", async () => {
   try {
-    await api("/cobros/config", { method: "PUT", body: JSON.stringify({ instruccionesPago: $("#qr-instrucciones").value }) });
+    await api("/cobros/config", { method: "PUT", body: JSON.stringify({
+      instruccionesPago: $("#qr-instrucciones").value, qrVence: $("#qr-vence").value }) });
     $("#qr-estado").textContent = "Guardado ✓";
     setTimeout(() => { $("#qr-estado").textContent = ""; }, 2500);
   } catch (err) { mostrarError(err); }
@@ -659,15 +660,31 @@ async function cargarPagos() {
   const [cfg, pagos] = await Promise.all([api("/cobros/config"), api("/pagos")]);
 
   $("#qr-instrucciones").value = cfg.instruccionesPago;
+  $("#qr-vence").value = cfg.qrVence || "";
   const img = $("#qr-actual");
   if (cfg.tieneQr) { img.src = cfg.qrUrl + "?" + Date.now(); img.classList.remove("oculto"); }
   else img.classList.add("oculto");
 
   // Sin APP_URL el QR no se puede mandar, y el síntoma sería que el bot dice
   // que lo envió y al cliente no le llega nada.
-  $("#qr-aviso").textContent = cfg.faltaAppUrl
-    ? "⚠ Falta APP_URL en el .env del servidor. Sin eso Meta no puede descargar el QR y el envío falla."
-    : cfg.tieneQr ? "Este es el QR que el bot le manda a los clientes." : "Todavía no cargaste tu QR.";
+  // El vencimiento manda sobre el resto de los avisos: un QR vencido corta los
+  // cobros y es lo primero que hay que ver al entrar acá.
+  const aviso = $("#qr-aviso");
+  aviso.classList.remove("error");
+  if (cfg.diasParaVencer !== null && cfg.diasParaVencer < 0) {
+    aviso.textContent = `⚠ Tu QR venció hace ${Math.abs(cfg.diasParaVencer)} días. El bot dejó de cobrar con él: renovalo en tu banco y subí el nuevo.`;
+    aviso.classList.add("error");
+  } else if (cfg.diasParaVencer !== null && cfg.diasParaVencer <= 30) {
+    aviso.textContent = `⚠ Tu QR vence en ${cfg.diasParaVencer} día${cfg.diasParaVencer === 1 ? "" : "s"}. Renovalo antes de que se corte el cobro.`;
+  } else if (cfg.faltaAppUrl) {
+    aviso.textContent = "⚠ Falta APP_URL en el .env del servidor. Sin eso Meta no puede descargar el QR y el envío falla.";
+  } else if (cfg.tieneQr) {
+    aviso.textContent = cfg.diasParaVencer !== null
+      ? `Este es el QR que el bot le manda a los clientes. Vence en ${cfg.diasParaVencer} días.`
+      : "Este es el QR que el bot le manda a los clientes. Cargá su fecha de caducidad para que te avise antes de que venza.";
+  } else {
+    aviso.textContent = "Todavía no cargaste tu QR.";
+  }
 
   const cont = $("#lista-pagos");
   cont.replaceChildren();

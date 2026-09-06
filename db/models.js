@@ -94,6 +94,12 @@ const negocioSchema = new mongoose.Schema({
   // Ruta pública aleatoria desde donde WhatsApp descarga el QR para mostrarlo.
   // Aleatoria y no el id del negocio para que no se pueda enumerar.
   qrToken: { type: String, default: "", index: true },
+  // Cuándo caduca el QR. Los QR reutilizables de los bancos vencen —dos años
+  // es lo habitual— y el día que eso pasa el bot seguiría mandando un QR
+  // muerto: el cliente escanea, no puede pagar, y nadie se entera. Guardarlo
+  // es lo que permite avisar ANTES.
+  qrVence: { type: Date, default: null },
+
   // Qué escribirle al cliente junto con el QR: nombre del titular, banco, o
   // lo que el negocio quiera aclarar.
   instruccionesPago: { type: String, default: "" },

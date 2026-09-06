@@ -182,6 +182,13 @@ const HERRAMIENTAS = [
       const completo = await Negocio.findById(negocio._id).select("+qrImagen").lean();
       if (!completo?.qrToken) return "El negocio todavía no cargó su QR de cobro. Decile al cliente que en un momento lo contacta una persona para coordinar el pago.";
 
+      // Un QR vencido es peor que ninguno: el cliente lo escanea, falla, y
+      // queda pensando que el negocio no funciona. Mejor decirle la verdad.
+      if (completo.qrVence && new Date(completo.qrVence) < new Date()) {
+        log.error(`[COBRO] El QR de "${completo.nombre}" venció el ${new Date(completo.qrVence).toLocaleDateString("es-BO")} y se sigue intentando cobrar con él`);
+        return "El QR de cobro del negocio está vencido, no sirve para pagar. Pedile disculpas al cliente y decile que en un momento lo contacta una persona para coordinar el pago.";
+      }
+
       // El último pedido sin pagar. Cobrar sin saber cuánto no sirve de nada.
       const pedido = await Pedido.findOne({
         negocioId: negocio._id, numero: contexto?.numero,

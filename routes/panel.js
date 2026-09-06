@@ -185,6 +185,19 @@ module.exports = function (app) {
     if (!negocio.activo) avisos.push({ nivel: "alto", texto: "El bot está apagado. No le responde a nadie.", ir: "bot" });
     if (negocio.herramientas?.pedidos && !productos) avisos.push({ nivel: "medio", texto: "Tomar pedidos está encendido pero el catálogo está vacío.", ir: "catalogo" });
     if (negocio.herramientas?.reservas && !negocio.googleCalendarId) avisos.push({ nivel: "medio", texto: "Agendar turnos está encendido pero falta conectar el calendario.", ir: "agenda" });
+    if (negocio.herramientas?.cobros && negocio.qrVence) {
+      const dias = Math.ceil((new Date(negocio.qrVence) - Date.now()) / 86400000);
+      if (dias < 0) {
+        avisos.push({ nivel: "alto", texto: `Tu QR de cobro venció hace ${Math.abs(dias)} día${Math.abs(dias) === 1 ? "" : "s"}. El bot no puede cobrar.`, ir: "pagos" });
+      } else if (dias <= 30) {
+        // 30 días de aviso: renovar un QR en el banco no es inmediato, y
+        // enterarse el día que vence es enterarse tarde.
+        avisos.push({ nivel: "medio", texto: `Tu QR de cobro vence en ${dias} día${dias === 1 ? "" : "s"}. Renovalo en tu banco antes de que se corte.`, ir: "pagos" });
+      }
+    }
+    if (negocio.herramientas?.cobros && !negocio.qrToken) {
+      avisos.push({ nivel: "medio", texto: "Enviar QR de pago está encendido pero no cargaste ningún QR.", ir: "pagos" });
+    }
     if (sinRespuesta > 0) avisos.push({ nivel: "bajo", texto: `${sinRespuesta} pregunta${sinRespuesta === 1 ? "" : "s"} que el bot no supo responder.`, ir: "huecos" });
 
     // Actividad reciente, de las tres fuentes, ordenada junta. Es lo que
@@ -322,9 +335,13 @@ module.exports = function (app) {
   // ─── COBROS ──────────────────────────────────────────────────────────────
   app.get("/api/cobros/config", auth, asyncRoute(async (req, res) => {
     const n = await Negocio.findById(req.sesion.negocioId).lean();
+    const diasParaVencer = n.qrVence
+      ? Math.ceil((new Date(n.qrVence) - Date.now()) / 86400000) : null;
     res.json({
       tieneQr: !!n.qrToken,
       qrUrl: n.qrToken ? `${CONFIG.BASE_PATH}/qr/${n.qrToken}.png` : "",
+      qrVence: n.qrVence ? new Date(n.qrVence).toISOString().slice(0, 10) : "",
+      diasParaVencer,
       instruccionesPago: n.instruccionesPago || "",
       // Sin APP_URL el QR no se puede mandar: Meta lo descarga por URL
       // pública, y sin dominio no hay URL que darle.
@@ -348,6 +365,15 @@ module.exports = function (app) {
   app.put("/api/cobros/config", auth, asyncRoute(async (req, res) => {
     const n = await Negocio.findById(req.sesion.negocioId);
     if (req.body.instruccionesPago !== undefined) n.instruccionesPago = String(req.body.instruccionesPago).slice(0, 600);
+    if (req.body.qrVence !== undefined) {
+      const v = String(req.body.qrVence).trim();
+      if (!v) n.qrVence = null;
+      else {
+        const fecha = new Date(`${v}T23:59:59`);
+        if (isNaN(fecha)) throw new ErrorHttp(400, "La fecha de caducidad no es válida (formato AAAA-MM-DD)");
+        n.qrVence = fecha;
+      }
+    }
     await n.save();
     res.json({ ok: true });
   }));

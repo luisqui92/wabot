@@ -71,12 +71,30 @@ Cliente:  "Recibimos tu comprobante, lo estamos verificando"
 
 Recién cuando apretás **Aceptar pago**, el pedido queda marcado como pagado.
 
-## El QR: lo que hoy se puede y lo que no
+## El QR y su caducidad
 
-Se usa **tu QR fijo**, el que exportás del banco, y el cliente escribe el monto.
+Se usa el **QR reutilizable** que exportás de tu banco: acepta múltiples pagos,
+el cliente escribe el monto, y tiene una fecha de caducidad que fija el banco
+al emitirlo (dos años es lo habitual).
 
-**Un QR único por pedido, con el monto ya embebido, requiere convenio y
-credenciales API de tu banco** (QR Simple / ASFI). Eso es papeleo comercial, no
+**Cargá esa fecha en el panel.** No es un capricho: el día que el QR venza, sin
+esa fecha el bot lo seguiría mandando. El cliente escanea, no puede pagar, y
+vos te enterás cuando alguien se queja — o peor, nunca, porque simplemente
+dejan de comprar.
+
+Con la fecha cargada:
+
+| Cuándo | Qué pasa |
+|---|---|
+| Faltan 30 días o menos | Aviso en el Resumen y en Pagos |
+| Ya venció | Aviso rojo, **y el bot deja de mandarlo**: le dice al cliente que lo contacta una persona, en vez de darle un QR muerto |
+
+Renovar el QR es sacar uno nuevo en tu banco y volver a subirlo acá. Al subirlo
+se genera un enlace nuevo, así el anterior deja de servir.
+
+**Un QR único por pedido, con el monto ya embebido, requiere credenciales API**
+— de tu banco, o de un agregador de QR Simple, que es el camino más rápido si
+el banco tarda. Eso es papeleo comercial, no
 programación. El día que lo tengas, la pieza que cambia es una sola:
 `enviar_datos_de_pago` genera el QR dinámico en vez de servir el fijo. El resto
 —recepción, lectura, verificación, aprobación— no se toca.

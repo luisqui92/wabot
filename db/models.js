@@ -20,6 +20,15 @@ const negocioSchema = new mongoose.Schema({
   // Que es el negocio, en una o dos frases. Va al prompt del sistema.
   descripcion: { type: String, default: "" },
 
+  // Cómo escribe el dueño, sacado de sus conversaciones reales. Va SEPARADO
+  // de "instrucciones" porque son cosas distintas: esto lo genera el sistema
+  // y se regenera al reimportar, aquello lo escribe una persona. Mezclarlos
+  // haría que reimportar borre lo que el dueño escribió a mano.
+  estiloVoz: { type: String, default: "" },
+  // Tres mensajes textuales suyos. Un ejemplo real enseña más sobre cómo
+  // suena alguien que cualquier descripción de su estilo.
+  ejemplosVoz: { type: [String], default: [] },
+
   // Instrucciones libres que el dueño escribe desde el panel ("tuteá",
   // "nunca des precios por WhatsApp", "cerrá siempre invitando a visitarnos").
   // Es lo que hace que dos bots con el mismo codigo suenen distinto.

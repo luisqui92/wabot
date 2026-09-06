@@ -178,6 +178,7 @@ services/
   cliente.js               memoria: quién es cada persona y su ficha
   audio.js                 notas de voz: descarga de Meta y transcripción
   comprobante.js           lee y verifica comprobantes de pago
+  importarChat.js          lee un export de WhatsApp: conocimiento + voz
   googleCalendar.js        cuenta de servicio y REST de Calendar
   agenda.js                turnos: horario x calendario x anticipación
   herramientas.js          lo que el bot PUEDE HACER — el único archivo a
@@ -224,6 +225,25 @@ El bot consulta horarios libres, agenda y cancela contra el Google Calendar del
 negocio — ver [`AGENDA.md`](AGENDA.md). **Google es la fuente de verdad de la
 disponibilidad**: el dueño también agenda a mano desde su celular, y si no
 miráramos su calendario ofreceríamos horarios ya ocupados.
+
+## Que no suene a ChatGPT
+
+Dos piezas, y las dos importan:
+
+**Las reglas.** El prompt prohíbe explícitamente lo que delata a un bot:
+listas con viñetas, negritas, "¡Claro! Con gusto te ayudo", repetir la
+pregunta antes de contestarla, cerrar cada mensaje ofreciendo más ayuda, y
+responder de más. Se permite escribir suelto —sin mayúscula inicial, sin punto
+final— porque así escribe la gente.
+
+**La voz del negocio.** Desde *Conocimiento* se importa el export de WhatsApp
+del propio negocio (un botón en la app: Exportar chat → Sin archivos). De ahí
+salen dos cosas: lo que ya contestó mil veces, y **cómo lo dice**. El estilo y
+tres mensajes textuales suyos entran al prompt, así el bot suena como él.
+
+Lo importado **no se guarda solo**: se muestra para revisar, y lo que puede
+haber cambiado —precios, promos, plazos— viene destildado. Importar un precio
+viejo como si fuera actual hace que el bot cotice mal a un cliente real.
 
 ## Notas de voz
 

@@ -94,6 +94,10 @@
         <label>Nombre del negocio <input id="n-nombre" required></label>
         <label>Descripción — qué es el negocio, en una o dos frases
           <textarea id="n-descripcion" rows="2"></textarea></label>
+        <label>Cómo hablás vos — lo genera la importación de tus chats, pero podés corregirlo
+          <textarea id="n-estilo" rows="5" placeholder="Se completa solo al importar tus conversaciones de WhatsApp."></textarea></label>
+        <label>Tres mensajes tuyos de ejemplo, uno por línea
+          <textarea id="n-ejemplos" rows="3"></textarea></label>
         <label>Instrucciones para el bot — cómo tiene que hablar y qué no debe hacer
           <textarea id="n-instrucciones" rows="5"></textarea></label>
         <label>Qué responde cuando no sabe
@@ -130,6 +134,20 @@
         <button type="submit">Cargar</button>
         <span id="documento-estado" class="estado"></span>
       </form>
+
+      <details class="tarjeta ancha" id="caja-importar">
+        <summary>⭐ Importar tus conversaciones de WhatsApp</summary>
+        <p class="nota">De acá salen dos cosas: lo que ya contestaste mil veces, y <strong>tu forma de hablar</strong>, para que el bot no suene a robot.</p>
+        <p class="nota">En WhatsApp: abrí el chat → ⋮ → <em>Más</em> → <em>Exportar chat</em> → <em>Sin archivos</em>. Subí el .txt acá.</p>
+        <input type="file" id="imp-archivo" accept=".txt,text/plain">
+        <div id="imp-paso2" class="oculto">
+          <label>¿Cuál de estos sos vos (el negocio)?
+            <select id="imp-quien"></select></label>
+          <button type="button" id="btn-analizar">Analizar</button>
+          <span id="imp-estado" class="estado"></span>
+        </div>
+        <div id="imp-resultado"></div>
+      </details>
 
       <h2>Documentos cargados</h2>
       <div id="lista-documentos" class="lista"></div>

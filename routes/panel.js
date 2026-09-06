@@ -9,6 +9,7 @@ const { fragmentar, armarContexto } = require("../services/baseConocimiento");
 const { agregarMensaje } = require("../services/conversacion");
 const { actualizarResumen } = require("../services/cliente");
 const { transcribir, MAX_BYTES } = require("../services/audio");
+const { parsear, participantes, analizar } = require("../services/importarChat");
 const express = require("express");
 const { disponibilidad, cancelar, enZona, DIAS } = require("../services/agenda");
 const { emailCuentaDeServicio } = require("../services/googleCalendar");
@@ -48,13 +49,16 @@ module.exports = function (app) {
   }));
 
   app.put("/api/negocio", auth, asyncRoute(async (req, res) => {
-    const permitidos = ["nombre", "descripcion", "instrucciones", "mensajeSinInfo", "numeroEscalamiento", "activo", "transcribirAudios"];
+    const permitidos = ["nombre", "descripcion", "instrucciones", "mensajeSinInfo", "numeroEscalamiento", "activo", "transcribirAudios", "estiloVoz"];
     const cambios = {};
     for (const campo of permitidos) {
       if (req.body[campo] !== undefined) cambios[campo] = req.body[campo];
     }
     // herramientas va aparte: es un objeto anidado, y un $set directo del body
     // dejaría entrar cualquier clave inventada al documento.
+    if (Array.isArray(req.body.ejemplosVoz)) {
+      cambios.ejemplosVoz = req.body.ejemplosVoz.map(e => String(e).slice(0, 400)).slice(0, 3);
+    }
     if (req.body.herramientas) {
       cambios["herramientas.catalogo"] = !!req.body.herramientas.catalogo;
       cambios["herramientas.pedidos"] = !!req.body.herramientas.pedidos;
@@ -444,6 +448,79 @@ module.exports = function (app) {
       // con clientes reales.
       res.json({ texto });
     }));
+
+  // ─── IMPORTAR HISTORIAL ──────────────────────────────────────────────────
+  // Dos pasos a propósito. Primero se lee el archivo y se devuelven los
+  // participantes: hay que saber cuál de los dos es el negocio, y adivinarlo
+  // por volumen falla justo donde importa. Recién con esa respuesta se
+  // analiza, que es la parte que cuesta plata.
+  app.post("/api/importar/participantes", auth, asyncRoute(async (req, res) => {
+    const mensajes = parsear(String(req.body?.contenido || ""));
+    if (!mensajes.length) {
+      throw new ErrorHttp(400, "No se reconoció ningún mensaje. ¿Es el .txt que exporta WhatsApp con «Exportar chat»?");
+    }
+    res.json({ mensajes: mensajes.length, participantes: participantes(mensajes) });
+  }));
+
+  app.post("/api/importar/analizar", auth, asyncRoute(async (req, res) => {
+    const contenido = String(req.body?.contenido || "");
+    const nombreNegocio = String(req.body?.nombreNegocio || "").trim();
+    if (!nombreNegocio) throw new ErrorHttp(400, "Falta indicar cuál de los participantes es el negocio");
+
+    const mensajes = parsear(contenido);
+    if (!mensajes.some(m => m.autor === nombreNegocio)) {
+      throw new ErrorHttp(400, `"${nombreNegocio}" no escribió ningún mensaje en este chat`);
+    }
+
+    try {
+      // No se guarda nada acá: se devuelve para que una persona lo revise.
+      // Una conversación vieja puede tener precios que ya cambiaron, y
+      // meterlos derecho a la base haría que el bot cotice mal.
+      res.json(await analizar(mensajes, nombreNegocio));
+    } catch (e) {
+      throw new ErrorHttp(502, `No se pudo analizar: ${e.response?.data?.error?.message || e.message}`);
+    }
+  }));
+
+  // Lo que el dueño aprobó, después de revisarlo.
+  app.post("/api/importar/guardar", auth, asyncRoute(async (req, res) => {
+    const fragmentos = Array.isArray(req.body?.fragmentos) ? req.body.fragmentos : [];
+    let guardados = 0;
+
+    if (fragmentos.length) {
+      const doc = await Documento.create({
+        negocioId: req.sesion.negocioId,
+        nombre: String(req.body?.nombre || "Importado de WhatsApp").slice(0, 120),
+        textoOriginal: fragmentos.map(f => `## ${f.titulo || ""}\n${f.texto}`).join("\n\n"),
+      });
+      const filas = fragmentos
+        .map(f => ({ negocioId: req.sesion.negocioId, documentoId: doc._id,
+          titulo: String(f.titulo || "").slice(0, 120), texto: String(f.texto || "").trim(), origen: "documento" }))
+        .filter(f => f.texto);
+      if (filas.length) { await Fragmento.insertMany(filas); guardados = filas.length; }
+    }
+
+    if (req.body?.estilo !== undefined) {
+      await Negocio.updateOne({ _id: req.sesion.negocioId }, {
+        estiloVoz: String(req.body.estilo || "").slice(0, 2000),
+        ejemplosVoz: (Array.isArray(req.body.ejemplos) ? req.body.ejemplos : []).map(e => String(e).slice(0, 400)).slice(0, 3),
+      });
+    }
+    res.json({ guardados });
+  }));
+
+  app.get("/api/voz", auth, asyncRoute(async (req, res) => {
+    const n = await Negocio.findById(req.sesion.negocioId).lean();
+    res.json({ estiloVoz: n.estiloVoz || "", ejemplosVoz: n.ejemplosVoz || [] });
+  }));
+
+  app.put("/api/voz", auth, asyncRoute(async (req, res) => {
+    await Negocio.updateOne({ _id: req.sesion.negocioId }, {
+      estiloVoz: String(req.body?.estiloVoz || "").slice(0, 2000),
+      ejemplosVoz: (Array.isArray(req.body?.ejemplosVoz) ? req.body.ejemplosVoz : []).map(e => String(e).slice(0, 400)).slice(0, 3),
+    });
+    res.json({ ok: true });
+  }));
 
   // ─── CATÁLOGO ────────────────────────────────────────────────────────────
   // Los precios entran y salen en la unidad de la moneda (12.50) pero se

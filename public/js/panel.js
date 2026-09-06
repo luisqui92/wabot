@@ -239,6 +239,8 @@ async function cargarNegocio() {
   $("#n-nombre").value = n.nombre || "";
   $("#n-descripcion").value = n.descripcion || "";
   $("#n-instrucciones").value = n.instrucciones || "";
+  $("#n-estilo").value = n.estiloVoz || "";
+  $("#n-ejemplos").value = (n.ejemplosVoz || []).join("\n");
   $("#n-mensajeSinInfo").value = n.mensajeSinInfo || "";
   $("#n-numeroEscalamiento").value = n.numeroEscalamiento || "";
   $("#n-activo").checked = !!n.activo;
@@ -269,6 +271,8 @@ $("#form-negocio").addEventListener("submit", async (e) => {
         nombre: $("#n-nombre").value,
         descripcion: $("#n-descripcion").value,
         instrucciones: $("#n-instrucciones").value,
+        estiloVoz: $("#n-estilo").value,
+        ejemplosVoz: $("#n-ejemplos").value.split("\n").map(e => e.trim()).filter(Boolean).slice(0, 3),
         mensajeSinInfo: $("#n-mensajeSinInfo").value,
         numeroEscalamiento: $("#n-numeroEscalamiento").value.replace(/[^0-9]/g, ""),
         activo: $("#n-activo").checked,
@@ -468,6 +472,101 @@ async function cargarReservas() {
     }
     cont.append(item);
   }
+}
+
+// ─── IMPORTAR CONVERSACIONES ────────────────────────────────────────────────
+let contenidoImportado = "";
+
+$("#imp-archivo").addEventListener("change", async (e) => {
+  const archivo = e.target.files[0];
+  if (!archivo) return;
+  $("#imp-resultado").replaceChildren();
+  $("#imp-estado").textContent = "Leyendo…";
+  try {
+    contenidoImportado = await archivo.text();
+    const r = await api("/importar/participantes", { method: "POST", body: JSON.stringify({ contenido: contenidoImportado }) });
+    const sel = $("#imp-quien");
+    sel.replaceChildren();
+    for (const p of r.participantes) {
+      const o = document.createElement("option");
+      o.value = p.nombre;
+      o.textContent = `${p.nombre} (${p.mensajes} mensajes)`;
+      sel.append(o);
+    }
+    $("#imp-paso2").classList.remove("oculto");
+    $("#imp-estado").textContent = `${r.mensajes} mensajes leídos`;
+  } catch (err) { $("#imp-estado").textContent = ""; mostrarError(err); }
+});
+
+$("#btn-analizar").addEventListener("click", async () => {
+  const boton = $("#btn-analizar");
+  boton.disabled = true;
+  $("#imp-estado").textContent = "Leyendo la conversación… esto tarda un momento.";
+  try {
+    const r = await api("/importar/analizar", { method: "POST",
+      body: JSON.stringify({ contenido: contenidoImportado, nombreNegocio: $("#imp-quien").value }) });
+    mostrarImportacion(r);
+    $("#imp-estado").textContent = r.paresTotales > r.paresUsados
+      ? `Se analizaron ${r.paresUsados} de ${r.paresTotales} intercambios (el resto queda para otra importación).`
+      : `${r.paresUsados} intercambios analizados.`;
+  } catch (err) { $("#imp-estado").textContent = ""; mostrarError(err); }
+  finally { boton.disabled = false; }
+});
+
+function mostrarImportacion(r) {
+  const cont = $("#imp-resultado");
+  cont.replaceChildren();
+
+  // La voz primero: es lo que más cambia cómo suena el bot.
+  if (r.estilo) {
+    const caja = el("div", "voz-caja");
+    caja.append(el("h4", null, "Así escribís vos"));
+    caja.append(el("div", null, r.estilo));
+    for (const ej of r.ejemplos || []) caja.append(el("p", "ej", `"${ej}"`));
+    cont.append(caja);
+  }
+
+  if (!r.fragmentos.length) {
+    cont.append(el("p", "nota", "No salió información aprovechable de este chat. Probá con uno donde hayas contestado consultas."));
+  } else {
+    cont.append(el("h3", null, `${r.fragmentos.length} datos encontrados — destildá los que no quieras`));
+    const aRevisar = r.fragmentos.filter(f => f.revisar).length;
+    if (aRevisar) {
+      cont.append(el("p", "nota", `⚠ ${aRevisar} están marcados para revisar: son precios, promos o plazos que pueden haber cambiado desde esa conversación. Si los cargás viejos, el bot va a cotizar mal.`));
+    }
+    for (const f of r.fragmentos) {
+      const caja = el("div", `frag-importado${f.revisar ? " revisar" : ""}`);
+      const cb = document.createElement("input");
+      cb.type = "checkbox";
+      // Lo dudoso viene DESTILDADO: que entre a la base tiene que ser una
+      // decisión, no un descuido.
+      cb.checked = !f.revisar;
+      const cuerpo = el("div");
+      if (f.titulo) cuerpo.append(el("h4", null, f.titulo));
+      cuerpo.append(el("p", null, f.texto));
+      if (f.revisar) cuerpo.append(el("span", "marca-revisar", "⚠ Verificá que siga vigente antes de cargarlo"));
+      caja.append(cb, cuerpo);
+      caja.datos = () => cb.checked ? { titulo: f.titulo, texto: f.texto } : null;
+      cont.append(caja);
+    }
+  }
+
+  const guardar = el("button", null, "Guardar lo seleccionado");
+  guardar.addEventListener("click", async () => {
+    const fragmentos = [...cont.querySelectorAll(".frag-importado")].map(c => c.datos()).filter(Boolean);
+    try {
+      const res = await api("/importar/guardar", { method: "POST", body: JSON.stringify({
+        fragmentos, estilo: r.estilo, ejemplos: r.ejemplos,
+        nombre: "Importado de WhatsApp — " + new Date().toLocaleDateString("es-BO"),
+      }) });
+      $("#imp-estado").textContent = `${res.guardados} datos cargados${r.estilo ? " y tu forma de hablar guardada" : ""} ✓`;
+      cont.replaceChildren();
+      $("#imp-paso2").classList.add("oculto");
+      $("#imp-archivo").value = "";
+      await cargarConocimiento();
+    } catch (err) { mostrarError(err); }
+  });
+  cont.append(guardar);
 }
 
 // ─── DICTADO ────────────────────────────────────────────────────────────────

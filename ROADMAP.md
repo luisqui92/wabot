@@ -62,7 +62,7 @@ condicionan — no la lista. Y tres ideas propias que están más abajo, en
 Cuatro que no estaban en la visión original y que atacan lo que realmente hace
 fracasar a estos productos:
 
-### A. Que el negocio nunca escriba su base de conocimiento
+### A. Que el negocio nunca escriba su base de conocimiento ✅ HECHO
 Todos los competidores piden sentarse a cargar la información. La mayoría de
 los dueños no lo hace, o lo hace mal, el bot responde mal, y se dan de baja.
 **Esa es la principal causa de baja del rubro, y no es un problema técnico
@@ -72,6 +72,10 @@ La solución: **importar sus conversaciones de WhatsApp**. Cualquier dueño tien
 años contestando lo mismo, y WhatsApp exporta el chat a `.txt` con un botón.
 De ahí salen los pares pregunta-respuesta reales, con precios reales, y —de
 regalo— su forma de hablar. Onboarding de diez minutos en vez de tres horas.
+
+Hecho, con revisión humana antes de guardar y lo dudoso destildado por
+defecto. Pendiente encima de esto: cargar el catálogo desde una foto de la
+lista de precios, que es el mismo trabajo aplicado a otra entrada.
 
 ### B. "Preguntale al dueño", en tiempo real
 Cuando el bot no sabe, hoy dice "te confirmamos" y el cliente espera. Dado

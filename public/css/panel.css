@@ -209,3 +209,16 @@ details > *:not(summary) { margin-top: 10px; }
   border-radius: 8px; padding: 7px 11px; font-size: 12.5px; margin-top: 6px; }
 .montos { display: flex; gap: 18px; align-items: baseline; margin: 6px 0; }
 .montos .grande { font-size: 21px; font-weight: 600; font-variant-numeric: tabular-nums; }
+
+/* ─── Importación ──────────────────────────────────────────────────────── */
+#caja-importar summary { color: var(--acento); font-weight: 550; }
+.frag-importado { background: var(--superficie); border: 1px solid var(--borde); border-radius: 10px;
+  padding: 11px 13px; margin-bottom: 8px; display: flex; gap: 10px; align-items: flex-start; }
+.frag-importado.revisar { border-color: #f0dcb4; background: #fdf9f0; }
+.frag-importado input[type=checkbox] { margin-top: 3px; }
+.frag-importado h4 { margin: 0 0 3px; font-size: 13px; }
+.frag-importado p { margin: 0; font-size: 12.5px; color: var(--suave); white-space: pre-wrap; }
+.marca-revisar { font-size: 11px; color: var(--alerta); display: block; margin-top: 4px; }
+.voz-caja { background: #f7f9f4; border: 1px solid var(--borde); border-radius: 10px; padding: 13px; margin: 12px 0; }
+.voz-caja h4 { margin: 0 0 7px; font-size: 11px; color: var(--suave); text-transform: uppercase; letter-spacing: .07em; }
+.voz-caja .ej { font-style: italic; color: var(--suave); font-size: 12.5px; margin: 3px 0; }

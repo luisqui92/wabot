@@ -8,6 +8,7 @@ const helmet = require("helmet");
 const mongoose = require("mongoose");
 
 const { CONFIG, log, validateConfig } = require("./config");
+const { aBuffer } = require("./services/httpHelpers");
 validateConfig();
 
 const app = express();
@@ -33,7 +34,10 @@ app.use(helmet({
       defaultSrc: ["'self'"],
       scriptSrc: ["'self'"],
       styleSrc: ["'self'"],
-      imgSrc: ["'self'", "data:"],
+      // blob: porque las imágenes protegidas (comprobantes, QR de cobro) se
+      // bajan con fetch autenticado y se muestran con URL.createObjectURL —
+      // sin esto la CSP las bloquea y el dueño ve el recuadro vacío.
+      imgSrc: ["'self'", "data:", "blob:"],
       // blob: para el audio que arma MediaRecorder al dictar desde el panel.
       mediaSrc: ["'self'", "blob:"],
       connectSrc: ["'self'"],
@@ -85,10 +89,11 @@ router.get("/qr/:token.png", async (req, res) => {
   try {
     const { Negocio } = require("./db/models");
     const n = await Negocio.findOne({ qrToken: req.params.token }).select("+qrImagen").lean();
-    if (!n?.qrImagen) return res.sendStatus(404);
+    const bytes = aBuffer(n?.qrImagen);
+    if (!bytes) return res.sendStatus(404);
     res.set("Content-Type", n.qrMime || "image/png");
     res.set("Cache-Control", "public, max-age=300");
-    res.send(n.qrImagen);
+    res.send(bytes);
   } catch (e) {
     log.error("[QR]", e.message);
     res.sendStatus(500);

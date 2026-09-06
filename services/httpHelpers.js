@@ -26,6 +26,19 @@ function asyncRoute(handler) {
   };
 }
 
+// Un campo Buffer leído con .lean() no vuelve como Buffer sino como el
+// Binary del driver de MongoDB, y res.send() de un Binary no manda los bytes:
+// lo serializa como JSON y el navegador recibe una cadena base64 entre
+// comillas. El <img> queda roto sin ningún error en consola ni en el log, que
+// es la peor forma de fallar. Esto normaliza cualquiera de las dos formas.
+function aBuffer(valor) {
+  if (!valor) return null;
+  if (Buffer.isBuffer(valor)) return valor;
+  if (valor.buffer) return Buffer.from(valor.buffer);          // Binary del driver
+  if (Array.isArray(valor.data)) return Buffer.from(valor.data); // Buffer ya serializado
+  return null;
+}
+
 // Busca un documento del negocio, o 404. El filtro SIEMPRE debe incluir
 // negocioId: asi ningun endpoint nuevo se olvida de aislar por dueño y
 // termina dejando que un negocio lea los datos de otro.
@@ -36,4 +49,4 @@ async function obtenerOFallar(Modelo, filtro, mensajeNoEncontrado = "No encontra
   return doc;
 }
 
-module.exports = { asyncRoute, ErrorHttp, obtenerOFallar };
+module.exports = { asyncRoute, ErrorHttp, obtenerOFallar, aBuffer };

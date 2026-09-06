@@ -276,6 +276,28 @@ Copia diaria cifrada que **se verifica restaurándola de verdad** antes de darse
 por buena — ver [`RESPALDOS.md`](RESPALDOS.md). Hay que configurarla: sin
 `BACKUP_CLAVE` en el `.env`, el script se niega a correr.
 
+## Demo con datos reales
+
+Para ver el panel lleno antes de cargar un negocio de verdad:
+
+```bash
+node scripts/demo.js            # carga la demo
+node scripts/demo.js --borrar   # la saca sin dejar nada
+```
+
+Crea "Pizzería Don Luis": 26 productos en cinco categorías, 14 fragmentos de
+conocimiento (incluidas dos correcciones enseñadas desde Huecos), 6 clientes con
+su ficha escrita por la IA, 6 conversaciones —una con el bot pausado porque la
+tomó una persona, cuatro con preguntas que no supo responder—, 5 pedidos en
+distintos estados, 4 reservas y 3 comprobantes: uno correcto, uno que pagó de
+menos, y el mismo comprobante reenviado por otra persona.
+
+Entrás con `demo@wabot.local` / `demo12345`.
+
+Vive bajo el `phoneNumberId` `DEMO-PIZZERIA`, que no es el de ninguna línea real:
+ningún mensaje de WhatsApp puede caer en la demo, y borrarla no toca tu negocio.
+Correr el script dos veces no duplica nada, la borra y la vuelve a crear.
+
 ## Hacia dónde va
 
 Qué construir y en qué orden está en [`ROADMAP.md`](ROADMAP.md), junto con las

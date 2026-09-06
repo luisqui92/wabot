@@ -4,7 +4,7 @@
 // lea o edite la base de conocimiento de otro.
 const { Negocio, Usuario, Documento, Fragmento, Producto, Pedido, Pago, Reserva, Cliente, Conversacion } = require("../db/models");
 const { verificarPassword, generarToken, requireAuth } = require("../services/auth");
-const { asyncRoute, ErrorHttp, obtenerOFallar } = require("../services/httpHelpers");
+const { asyncRoute, ErrorHttp, obtenerOFallar, aBuffer } = require("../services/httpHelpers");
 const { fragmentar, armarContexto } = require("../services/baseConocimiento");
 const { agregarMensaje } = require("../services/conversacion");
 const { actualizarResumen } = require("../services/cliente");
@@ -15,6 +15,7 @@ const { disponibilidad, cancelar, enZona, DIAS } = require("../services/agenda")
 const { emailCuentaDeServicio } = require("../services/googleCalendar");
 const { MAX_BYTES: MAX_IMAGEN } = require("../services/comprobante");
 const crypto = require("crypto");
+const { CONFIG } = require("../config");
 const { enviarTexto } = require("../services/metaWhatsapp");
 
 const auth = requireAuth(["admin"]);
@@ -397,10 +398,11 @@ module.exports = function (app) {
   // un cliente, no algo que deba viajar en el listado ni quedar en un caché.
   app.get("/api/pagos/:id/imagen", auth, asyncRoute(async (req, res) => {
     const p = await Pago.findOne({ _id: req.params.id, negocioId: req.sesion.negocioId }).select("+imagen").lean();
-    if (!p?.imagen) throw new ErrorHttp(404, "Sin imagen");
+    const bytes = aBuffer(p?.imagen);
+    if (!bytes) throw new ErrorHttp(404, "Sin imagen");
     res.set("Content-Type", p.imagenMime || "image/jpeg");
     res.set("Cache-Control", "private, no-store");
-    res.send(p.imagen);
+    res.send(bytes);
   }));
 
   app.put("/api/pagos/:id", auth, asyncRoute(async (req, res) => {

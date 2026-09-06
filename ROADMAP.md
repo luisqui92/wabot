@@ -83,11 +83,13 @@ Es el módulo de huecos convertido en algo que pasa solo, sin que nadie abra un
 panel. Requiere una plantilla aprobada de categoría *utility* para poder
 escribirle al dueño fuera de su ventana de 24 h.
 
-### C. Audio en serio
-Buena parte de WhatsApp en Bolivia son notas de voz. Los productos globales no
-las priorizan porque en sus mercados pesan menos. Dos lados: el cliente manda
-audio y se le contesta, y **el dueño carga conocimiento grabando dos minutos**
-— la forma más natural de cargar información para quien no quiere escribir.
+### C. Audio en serio ✅ HECHO
+Notas de voz de clientes transcritas, con el vocabulario sesgado por el
+catálogo del negocio. Y dictado desde el panel para cargar conocimiento
+hablando, con revisión humana antes de guardar.
+
+Pendiente encima de esto: **responder** con nota de voz, que cierra el círculo
+para el cliente que no quiere leer.
 
 ### D. Trazabilidad de cada respuesta
 Guardar de qué fragmento salió cada respuesta, para poder preguntar "¿por qué

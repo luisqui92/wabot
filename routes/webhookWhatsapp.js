@@ -4,6 +4,7 @@
 const { CONFIG, log } = require("../config");
 const { firmaValida, marcarLeido } = require("../services/metaWhatsapp");
 const { procesarMensajeEntrante } = require("../services/conversacion");
+const { transcribirNotaDeVoz } = require("../services/conversacion");
 
 module.exports = function (app) {
   // ─── VERIFICACIÓN ────────────────────────────────────────────────────────
@@ -41,15 +42,26 @@ async function procesarWebhook(body) {
       const phoneNumberId = value?.metadata?.phone_number_id;
       // Puede ser un evento de estado (delivered/read/failed), no un mensaje.
       for (const msg of value?.messages || []) {
-        const texto = extraerTexto(msg);
-        // Un tipo no soportado se registra en vez de desaparecer: si alguien
-        // manda un audio y el bot no contesta, el log dice por qué. Sin esta
-        // línea, "no llegó nada" y "llegó algo que ignoramos" se ven igual.
+        if (!msg.from || !phoneNumberId) continue;
+
+        let texto = extraerTexto(msg);
+        let esAudio = false;
+
+        // Nota de voz: se baja de Meta y se transcribe. Hay que hacerlo YA —
+        // la URL del medio vive 5 minutos— y por eso pasa acá y no en una cola.
+        if (!texto && (msg.type === "audio" || msg.type === "voice") && msg.audio?.id) {
+          marcarLeido(phoneNumberId, msg.id).catch(() => {});
+          texto = await transcribirNotaDeVoz({ phoneNumberId, numero: msg.from, mediaId: msg.audio.id });
+          esAudio = true;
+          if (!texto) continue; // ya se le avisó al cliente adentro
+        }
+
+        // Lo que sigue sin soportarse se registra en vez de desaparecer: si
+        // alguien manda una foto y el bot no contesta, el log dice por qué.
         if (!texto) {
-          log.info(`[WEBHOOK] ${msg.from || "?"} mandó un ${msg.type} — tipo no soportado, ignorado`);
+          log.info(`[WEBHOOK] ${msg.from} mandó un ${msg.type} — tipo no soportado, ignorado`);
           continue;
         }
-        if (!msg.from || !phoneNumberId) continue;
 
         marcarLeido(phoneNumberId, msg.id).catch(() => {});
 
@@ -57,6 +69,7 @@ async function procesarWebhook(body) {
           phoneNumberId,
           numero: msg.from,
           texto,
+          esAudio,
           nombrePerfil: value?.contacts?.[0]?.profile?.name || "",
         });
       }
@@ -64,10 +77,10 @@ async function procesarWebhook(body) {
   }
 }
 
-// Audio, imagen y ubicación devuelven null a propósito: procesarlos requiere
-// bajar el archivo de la Graph API y transcribirlo o describirlo, y un bot
-// que responde cualquier cosa a un audio es peor que uno que no lo atiende.
-// Cuando se agreguen, se agregan acá y nada más cambia.
+// Los audios ya no pasan por acá: los atiende el bloque de arriba. Imagen,
+// documento y ubicación siguen devolviendo null a propósito — describir una
+// foto es otro problema, y un bot que responde cualquier cosa a una imagen es
+// peor que uno que avisa que no la puede ver.
 function extraerTexto(msg) {
   if (msg.type === "text") return (msg.text?.body || "").trim() || null;
   if (msg.type === "interactive") {

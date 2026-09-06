@@ -74,3 +74,8 @@ code { background: #0d0f14; padding: 1px 5px; border-radius: 4px; font-size: 12p
 .agotado { opacity: .5; }
 .estados { display: flex; gap: 6px; flex-wrap: wrap; }
 .estados button { padding: 4px 10px; font-size: 12px; }
+
+/* ─── Dictado ──────────────────────────────────────────────────────────── */
+.grabar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.grabar button.grabando { background: var(--error); }
+.burbuja.audio::before { content: "🎙 "; opacity: .7; }

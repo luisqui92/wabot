@@ -7,6 +7,7 @@ const { Negocio, Conversacion } = require("../db/models");
 const { responder } = require("./asistenteIA");
 const { enviarTexto } = require("./metaWhatsapp");
 const { obtenerOCrear, armarContexto, refrescarResumenSiCorresponde } = require("./cliente");
+const { descargarMedia, transcribir, vocabularioDe } = require("./audio");
 
 // El historial embebido se recorta al guardar y no al leer: si solo se
 // recortara al leer, un cliente de años haria crecer el documento hasta el
@@ -22,7 +23,45 @@ async function agregarMensaje(conversacion, mensaje) {
   await conversacion.save();
 }
 
-async function procesarMensajeEntrante({ phoneNumberId, numero, texto, nombrePerfil }) {
+// Baja la nota de voz y la transcribe. Devuelve el texto, o null si no se
+// pudo — en ese caso ya se le avisó al cliente, porque el peor resultado
+// posible es que mande un audio y no pase absolutamente nada.
+async function transcribirNotaDeVoz({ phoneNumberId, numero, mediaId }) {
+  const negocio = await Negocio.findOne({ phoneNumberId });
+  if (!negocio?.activo) return null;
+
+  if (!negocio.transcribirAudios) {
+    log.info(`[AUDIO] ${numero} mandó un audio — transcripción desactivada para este negocio`);
+    await enviarTexto(phoneNumberId, numero,
+      "Por acá no puedo escuchar audios 🙏 ¿me lo escribís?").catch(() => {});
+    return null;
+  }
+
+  try {
+    const inicio = Date.now();
+    const { buffer, mime } = await descargarMedia(mediaId, phoneNumberId);
+    const texto = await transcribir(buffer, mime, await vocabularioDe(negocio));
+    log.info(`[AUDIO] ${numero} — ${(buffer.length / 1024).toFixed(0)} KB transcritos en ${((Date.now() - inicio) / 1000).toFixed(1)}s (${texto.length} chars)`);
+
+    // Un audio de ruido o silencio transcribe a nada. Contestar a un texto
+    // vacío haría que el bot invente sobre qué le preguntaron.
+    if (!texto) {
+      await enviarTexto(phoneNumberId, numero,
+        "No llegué a entender el audio 🙏 ¿me lo repetís o me lo escribís?").catch(() => {});
+      return null;
+    }
+    return texto;
+  } catch (e) {
+    log.error("[AUDIO] No se pudo transcribir:", e.message);
+    // Que falle la transcripción no puede terminar en silencio: el cliente no
+    // sabe si lo estamos ignorando o si se rompió algo.
+    await enviarTexto(phoneNumberId, numero,
+      "No pude escuchar tu audio 🙏 ¿me lo escribís? En un momento te respondo.").catch(() => {});
+    return null;
+  }
+}
+
+async function procesarMensajeEntrante({ phoneNumberId, numero, texto, nombrePerfil, esAudio = false }) {
   const negocio = await Negocio.findOne({ phoneNumberId });
   if (!negocio) {
     // Pasa cuando el numero esta dado de alta en Meta pero todavia no en el
@@ -48,13 +87,13 @@ async function procesarMensajeEntrante({ phoneNumberId, numero, texto, nombrePer
     if (!conversacion.clienteId) conversacion.clienteId = cliente._id;
   }
 
-  await agregarMensaje(conversacion, { rol: "cliente", texto });
+  await agregarMensaje(conversacion, { rol: "cliente", texto, esAudio });
 
   // Se loguea el largo del mensaje y NO su contenido: los logs son para
   // operar (¿llegó? ¿respondimos?), y el texto de lo que escribe un cliente
   // es dato suyo — está en el panel, que es donde corresponde leerlo, y no
   // desparramado en archivos de log que van a parar a cualquier lado.
-  log.info(`[CONV] ${numero} -> mensaje recibido (${texto.length} chars)`);
+  log.info(`[CONV] ${numero} -> ${esAudio ? "audio transcrito" : "mensaje"} (${texto.length} chars)`);
 
   // Una persona tomó la conversación: el bot se calla, pero el mensaje del
   // cliente igual queda guardado (arriba) para que lo vea en el panel.
@@ -104,4 +143,4 @@ async function procesarMensajeEntrante({ phoneNumberId, numero, texto, nombrePer
   }
 }
 
-module.exports = { procesarMensajeEntrante, agregarMensaje };
+module.exports = { procesarMensajeEntrante, transcribirNotaDeVoz, agregarMensaje };

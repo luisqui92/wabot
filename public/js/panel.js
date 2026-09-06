@@ -108,6 +108,7 @@ async function cargarNegocio() {
   $("#n-activo").checked = !!n.activo;
   $("#h-catalogo").checked = !!n.herramientas?.catalogo;
   $("#h-pedidos").checked = !!n.herramientas?.pedidos;
+  $("#n-audios").checked = !!n.transcribirAudios;
 
   // El aviso importa: significa que hay información cargada que el bot NO
   // está leyendo, y el síntoma visible sería que diga "no sé" sobre algo que
@@ -134,6 +135,7 @@ $("#form-negocio").addEventListener("submit", async (e) => {
         numeroEscalamiento: $("#n-numeroEscalamiento").value.replace(/[^0-9]/g, ""),
         activo: $("#n-activo").checked,
         herramientas: { catalogo: $("#h-catalogo").checked, pedidos: $("#h-pedidos").checked },
+        transcribirAudios: $("#n-audios").checked,
       }),
     });
     $("#negocio-estado").textContent = "Guardado ✓";
@@ -212,6 +214,74 @@ async function cargarConocimiento() {
     cc.append(item);
   }
 }
+
+// ─── DICTADO ────────────────────────────────────────────────────────────────
+// Grabar desde el navegador y mandar el audio crudo a transcribir. El texto se
+// PEGA en el textarea, no se guarda solo: la transcripción puede equivocarse
+// con nombres y precios, y eso terminaría siendo lo que el bot le dice a un
+// cliente. Que lo lea una persona antes.
+let grabadora, trozos = [];
+
+$("#btn-grabar").addEventListener("click", async () => {
+  const boton = $("#btn-grabar");
+  const estado = $("#grabar-estado");
+
+  if (grabadora?.state === "recording") {
+    grabadora.stop();
+    return;
+  }
+
+  if (!navigator.mediaDevices?.getUserMedia) {
+    return mostrarError(new Error("Este navegador no permite grabar. Probá con Chrome, o escribí el texto."));
+  }
+
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    trozos = [];
+    grabadora = new MediaRecorder(stream);
+    grabadora.ondataavailable = (e) => { if (e.data.size) trozos.push(e.data); };
+
+    grabadora.onstop = async () => {
+      // Soltar el micrófono enseguida: si no, el navegador deja el indicador
+      // de "grabando" prendido y eso asusta con razón.
+      stream.getTracks().forEach(t => t.stop());
+      boton.classList.remove("grabando");
+      boton.textContent = "🎙 Dictar en vez de escribir";
+
+      const blob = new Blob(trozos, { type: grabadora.mimeType || "audio/webm" });
+      if (blob.size < 1000) { estado.textContent = "Muy corto, no se grabó nada."; return; }
+
+      estado.textContent = "Transcribiendo…";
+      try {
+        const res = await fetch("api/transcribir", {
+          method: "POST",
+          headers: { "Content-Type": blob.type, Authorization: `Bearer ${token}` },
+          body: blob,
+        });
+        const datos = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(datos.error || `Error ${res.status}`);
+
+        // Se agrega al final en vez de reemplazar: si ya había texto escrito,
+        // pisarlo sería perder trabajo de quien lo tipeó.
+        const area = $("#d-texto");
+        area.value = area.value ? `${area.value.trim()}\n\n${datos.texto}` : datos.texto;
+        if (!$("#d-nombre").value) $("#d-nombre").value = "Dictado " + new Date().toLocaleDateString("es-BO");
+        estado.textContent = "Listo ✓ — revisalo antes de cargarlo";
+        area.focus();
+      } catch (err) {
+        estado.textContent = "";
+        mostrarError(err);
+      }
+    };
+
+    grabadora.start();
+    boton.classList.add("grabando");
+    boton.textContent = "⏹ Detener y transcribir";
+    estado.textContent = "Grabando… hablá tranquilo, después lo podés corregir.";
+  } catch (err) {
+    mostrarError(new Error("No se pudo usar el micrófono. Revisá el permiso del navegador."));
+  }
+});
 
 // ─── CATÁLOGO ───────────────────────────────────────────────────────────────
 $("#form-producto").addEventListener("submit", async (e) => {
@@ -447,7 +517,8 @@ async function abrirConversacion(id) {
   }
 
   for (const m of c.mensajes) {
-    const b = el("div", `burbuja ${m.rol}${m.sinRespuesta ? " sin-respuesta" : ""}`, m.texto);
+    const b = el("div", `burbuja ${m.rol}${m.sinRespuesta ? " sin-respuesta" : ""}${m.esAudio ? " audio" : ""}`, m.texto);
+    if (m.esAudio) b.title = "Transcripción de una nota de voz — puede tener errores";
     d.append(b);
   }
 

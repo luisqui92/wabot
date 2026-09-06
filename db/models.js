@@ -50,6 +50,11 @@ const negocioSchema = new mongoose.Schema({
     pedidos: { type: Boolean, default: false },
   },
 
+  // Transcribir las notas de voz de los clientes. Se paga por minuto, así que
+  // es del dueño la decisión — pero viene encendido: un audio ignorado deja al
+  // cliente hablándole a una pared, y eso cuesta más que la transcripción.
+  transcribirAudios: { type: Boolean, default: true },
+
   creadoEn: { type: Date, default: Date.now },
 });
 const Negocio = mongoose.model("Negocio", negocioSchema);
@@ -209,6 +214,10 @@ const mensajeSchema = new mongoose.Schema({
   // true cuando el bot contesto "no tengo esa info" — es la señal de que
   // ahi falta un fragmento, y lo que alimenta la lista de "huecos" del panel.
   sinRespuesta: { type: Boolean, default: false },
+  // El cliente lo mandó como nota de voz y esto es la transcripción. Se marca
+  // para que quien lea la conversación en el panel sepa que ese texto lo
+  // escribió una máquina y puede tener errores.
+  esAudio: { type: Boolean, default: false },
   fecha: { type: Date, default: Date.now },
 }, { _id: true });
 

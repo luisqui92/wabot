@@ -36,6 +36,10 @@ const CONFIG = {
   // asistenteIA.js, pero uno compatible con la API de OpenAI entra por acá.
   OPENAI_BASE_URL: (process.env.OPENAI_BASE_URL || "https://api.openai.com/v1").replace(/\/+$/, ""),
   TIMEOUT_OPENAI: 45000,
+  // Transcribir tarda más que responder: un audio de dos minutos puede llevar
+  // 20 segundos. Con el timeout de texto se cortaría justo en los audios
+  // largos, que son los que más valor tienen.
+  TIMEOUT_TRANSCRIPCION: 120000,
 
   // WHATSAPP_TOKEN: token de acceso (Meta -> tu app -> WhatsApp -> API Setup).
   // WHATSAPP_VERIFY_TOKEN: string que definis vos, y se configura IGUAL del

@@ -8,6 +8,8 @@ const { asyncRoute, ErrorHttp, obtenerOFallar } = require("../services/httpHelpe
 const { fragmentar, armarContexto } = require("../services/baseConocimiento");
 const { agregarMensaje } = require("../services/conversacion");
 const { actualizarResumen } = require("../services/cliente");
+const { transcribir, MAX_BYTES } = require("../services/audio");
+const express = require("express");
 const { enviarTexto } = require("../services/metaWhatsapp");
 
 const auth = requireAuth(["admin"]);
@@ -42,7 +44,7 @@ module.exports = function (app) {
   }));
 
   app.put("/api/negocio", auth, asyncRoute(async (req, res) => {
-    const permitidos = ["nombre", "descripcion", "instrucciones", "mensajeSinInfo", "numeroEscalamiento", "activo"];
+    const permitidos = ["nombre", "descripcion", "instrucciones", "mensajeSinInfo", "numeroEscalamiento", "activo", "transcribirAudios"];
     const cambios = {};
     for (const campo of permitidos) {
       if (req.body[campo] !== undefined) cambios[campo] = req.body[campo];
@@ -137,6 +139,34 @@ module.exports = function (app) {
     await f.deleteOne();
     res.json({ ok: true });
   }));
+
+  // ─── TRANSCRIBIR ─────────────────────────────────────────────────────────
+  // El dueño graba explicando su negocio y eso se convierte en conocimiento.
+  // Para alguien que no quiere escribir, es la forma natural de cargar
+  // información — y la más rápida: dos minutos hablando son varias pantallas
+  // de texto.
+  //
+  // express.raw y no una librería de multipart: es un solo archivo binario,
+  // no un formulario. Una dependencia más para esto no se justifica.
+  app.post("/api/transcribir", auth, express.raw({ type: "audio/*", limit: MAX_BYTES }),
+    asyncRoute(async (req, res) => {
+      if (!Buffer.isBuffer(req.body) || !req.body.length) {
+        throw new ErrorHttp(400, "No llegó ningún audio");
+      }
+      const negocio = await Negocio.findById(req.sesion.negocioId).lean();
+      let texto;
+      try {
+        texto = await transcribir(req.body, req.headers["content-type"] || "audio/ogg", negocio?.nombre || "");
+      } catch (e) {
+        throw new ErrorHttp(502, `No se pudo transcribir: ${e.message}`);
+      }
+      if (!texto) throw new ErrorHttp(422, "El audio no tiene voz reconocible");
+      // Se devuelve para que el dueño lo REVISE antes de guardarlo. Guardar
+      // una transcripción sin leerla sería meter los errores del modelo
+      // directo en la base de conocimiento del bot, y de ahí salen a hablar
+      // con clientes reales.
+      res.json({ texto });
+    }));
 
   // ─── CATÁLOGO ────────────────────────────────────────────────────────────
   // Los precios entran y salen en la unidad de la moneda (12.50) pero se

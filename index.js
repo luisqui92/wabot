@@ -34,6 +34,8 @@ app.use(helmet({
       scriptSrc: ["'self'"],
       styleSrc: ["'self'"],
       imgSrc: ["'self'", "data:"],
+      // blob: para el audio que arma MediaRecorder al dictar desde el panel.
+      mediaSrc: ["'self'", "blob:"],
       connectSrc: ["'self'"],
       objectSrc: ["'none'"],
       frameAncestors: ["'none'"],

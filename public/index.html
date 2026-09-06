@@ -55,6 +55,7 @@
           <legend>Qué puede hacer el bot</legend>
           <label class="linea"><input type="checkbox" id="h-catalogo"> Consultar precios del catálogo</label>
           <label class="linea"><input type="checkbox" id="h-pedidos"> Tomar pedidos</label>
+          <label class="linea"><input type="checkbox" id="n-audios"> Escuchar notas de voz</label>
           <p class="nota">Tomar pedidos necesita el catálogo cargado: el bot solo anota productos que existen.</p>
         </fieldset>
         <button type="submit">Guardar</button>
@@ -70,6 +71,10 @@
         <label>Texto — pegalo acá, o subí un archivo .txt / .md / .csv
           <textarea id="d-texto" rows="10" required></textarea></label>
         <input type="file" id="d-archivo" accept=".txt,.md,.csv,text/plain">
+        <div class="grabar">
+          <button type="button" id="btn-grabar">🎙 Dictar en vez de escribir</button>
+          <span id="grabar-estado" class="estado"></span>
+        </div>
         <button type="submit">Cargar</button>
         <span id="documento-estado" class="estado"></span>
       </form>

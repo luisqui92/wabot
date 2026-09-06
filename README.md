@@ -176,6 +176,7 @@ services/
   baseConocimiento.js      fragmentado y armado del contexto
   conversacion.js          orquestación de un mensaje entrante
   cliente.js               memoria: quién es cada persona y su ficha
+  audio.js                 notas de voz: descarga de Meta y transcripción
   herramientas.js          lo que el bot PUEDE HACER — el único archivo a
                            tocar para agregar una acción nueva
   auth.js                  bcrypt + token firmado para el panel
@@ -189,6 +190,21 @@ scripts/cambiar_numero.js  corrige el phoneNumberId de Meta de un negocio
 scripts/respaldo.js        copia diaria cifrada, verificada restaurándola
 scripts/restaurar.js       restaura un respaldo
 ```
+
+## Notas de voz
+
+Buena parte de WhatsApp acá son audios. El bot los baja de Meta y los
+transcribe, y de ahí siguen el mismo camino que un mensaje escrito. La
+transcripción se sesga con los nombres del catálogo del negocio: sin eso,
+"quiero dos salteñas" puede volver como algo que después no matchea ningún
+producto.
+
+Y para el otro lado: desde **Conocimiento** el dueño puede dictar en vez de
+escribir. La transcripción se pega en el campo para que la revise — no se
+guarda sola, porque los errores del modelo terminarían siendo lo que el bot le
+dice a un cliente.
+
+Se puede apagar por negocio: se paga por minuto.
 
 ## Acciones
 
@@ -222,9 +238,10 @@ octubre de 2026— que condicionan el diseño de cualquier función de seguimien
   fragmentos que no entran. Ahí toca llenar `Fragmento.embedding` y traer los
   N más parecidos en `armarContexto()`. El modelo de datos ya está partido en
   fragmentos justamente para que ese cambio sea local.
-- **Solo se atienden mensajes de texto y botones.** Audio, imagen y ubicación
-  se ignoran (`extraerTexto()` en `routes/webhookWhatsapp.js`). Un bot que
-  responde cualquier cosa a un audio es peor que uno que no lo atiende.
+- **Las notas de voz se transcriben**; imagen, documento y ubicación se
+  ignoran (`extraerTexto()` en `routes/webhookWhatsapp.js`). Describir una foto
+  es otro problema, y un bot que responde cualquier cosa a una imagen es peor
+  que uno que avisa que no la puede ver.
 - **Solo se cargan archivos de texto plano** (.txt, .md, .csv). No hay parseo
   de PDF ni de Word: se leen en el navegador con `FileReader`.
 - **No hay registro público.** Los usuarios se dan de alta por script: el panel

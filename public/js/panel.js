@@ -65,11 +65,12 @@ $("#btn-salir").addEventListener("click", cerrarSesion);
 function entrar() {
   $("#vista-login").classList.add("oculto");
   $("#vista-panel").classList.remove("oculto");
-  cargarNegocio();
+  cargarResumen().catch(mostrarError);
 }
 
 // ─── PESTAÑAS ───────────────────────────────────────────────────────────────
 const CARGADORES = {
+  resumen: cargarResumen,
   bot: cargarNegocio,
   conocimiento: cargarConocimiento,
   catalogo: cargarCatalogo,
@@ -96,6 +97,139 @@ document.querySelectorAll(".tab").forEach((b) => {
 function mostrarError(err) {
   console.error(err);
   alert(err.message);
+}
+
+// ─── RESUMEN ────────────────────────────────────────────────────────────────
+function haceCuanto(fecha) {
+  const min = Math.round((Date.now() - new Date(fecha)) / 60000);
+  if (min < 1) return "recién";
+  if (min < 60) return `hace ${min} min`;
+  const h = Math.round(min / 60);
+  if (h < 24) return `hace ${h} h`;
+  const d = Math.round(h / 24);
+  return d === 1 ? "ayer" : `hace ${d} días`;
+}
+
+function tarjetaKpi(etiqueta, valor, pie, sinDatos = false) {
+  const k = el("div", "kpi");
+  k.append(el("div", "et", etiqueta));
+  k.append(el("div", "num", valor));
+  k.append(el("div", `pie${sinDatos ? " sin" : ""}`, pie));
+  return k;
+}
+
+const ICONO = { pedido: "▧ Pedido", turno: "▩ Turno", conversacion: "◑ Conversación" };
+
+async function cargarResumen() {
+  const r = await api("/resumen");
+  const m = r.metricas;
+
+  $("#ws-nombre").textContent = r.negocio.nombre;
+  $("#resumen-sub").textContent = r.negocio.activo
+    ? "Lo que pasó mientras no mirabas."
+    : "⚠ El bot está apagado: no le está respondiendo a nadie.";
+
+  // ─── Avisos ───
+  const avisos = $("#avisos");
+  avisos.replaceChildren();
+  for (const a of r.avisos) {
+    const caja = el("div", `aviso ${a.nivel}`);
+    caja.append(el("span", null, a.texto));
+    const ir = el("button", "sutil", "Ir");
+    ir.addEventListener("click", () => document.querySelector(`[data-tab="${a.ir}"]`).click());
+    caja.append(ir);
+    avisos.append(caja);
+  }
+
+  // ─── KPIs. Cada número dice de qué período es: un número sin período no
+  // significa nada, y es exactamente donde los tableros mienten sin querer.
+  const k = $("#kpis");
+  k.replaceChildren();
+  k.append(tarjetaKpi("◑ Conversaciones", String(m.conversaciones30),
+    m.conversaciones7 ? `${m.conversaciones7} en los últimos 7 días` : "ninguna esta semana", !m.conversaciones7));
+
+  // El porcentaje solo aparece si hay con qué calcularlo. Un "0%" cuando
+  // nadie escribió todavía haría pensar que el bot funciona mal.
+  k.append(m.resueltasPorcentaje === null
+    ? tarjetaKpi("✦ Resueltas por el bot", "—", "todavía no respondió nada", true)
+    : tarjetaKpi("✦ Resueltas por el bot", `${m.resueltasPorcentaje}%`,
+        m.sinRespuesta ? `${m.sinRespuesta} sin respuesta` : "sin huecos"));
+
+  k.append(tarjetaKpi("▧ Pedidos nuevos", String(m.pedidosNuevos),
+    r.negocio.herramientas?.pedidos ? "esperando confirmación" : "tomar pedidos está apagado", !m.pedidosNuevos));
+  k.append(tarjetaKpi("▩ Turnos próximos", String(m.turnosProximos),
+    r.negocio.herramientas?.reservas ? "agendados de acá en adelante" : "agendar turnos está apagado", !m.turnosProximos));
+  k.append(tarjetaKpi("◉ Clientes", String(m.clientes), m.clientes ? "personas que escribieron" : "nadie todavía", !m.clientes));
+
+  // ─── Destacado ───
+  const d = $("#destacado");
+  d.replaceChildren();
+  d.append(el("span", "cinta", "ESTADO DEL BOT"));
+  if (!m.fragmentos) {
+    d.append(el("h2", null, "Al bot le falta lo principal"));
+    d.append(el("p", null, "No tiene información cargada, así que no puede responder nada concreto. Andá a Conocimiento y cargá horarios, precios o lo que más te pregunten."));
+  } else if (m.resueltasPorcentaje === null) {
+    d.append(el("h2", null, `${m.fragmentos} fragmentos cargados`));
+    d.append(el("p", null, "Todo listo. Falta que alguien le escriba: probá desde tu celular."));
+  } else if (m.sinRespuesta) {
+    d.append(el("h2", null, `Resolvió ${m.resueltasPorcentaje}% solo`));
+    const una = m.sinRespuesta === 1;
+    d.append(el("p", null, `${una ? "Quedó 1 pregunta" : `Quedaron ${m.sinRespuesta} preguntas`} sin responder. ${una ? "Contestala" : "Contestalas"} una vez en Huecos y no ${una ? "vuelve" : "vuelven"} a fallar.`));
+  } else {
+    d.append(el("h2", null, `Resolvió ${m.resueltasPorcentaje}% solo`));
+    d.append(el("p", null, `Con ${m.fragmentos} fragmentos cargados no quedó ninguna pregunta sin responder.`));
+  }
+
+  // ─── Capacidades ───
+  const cap = $("#capacidades");
+  cap.replaceChildren();
+  const filas = [
+    ["Responder preguntas", m.fragmentos > 0, m.fragmentos ? `${m.fragmentos} fragmentos` : "sin información"],
+    ["Consultar precios", !!r.negocio.herramientas?.catalogo, m.productos ? `${m.productos} productos` : "catálogo vacío"],
+    ["Tomar pedidos", !!r.negocio.herramientas?.pedidos, r.negocio.herramientas?.pedidos ? "activo" : "apagado"],
+    ["Agendar turnos", !!r.negocio.herramientas?.reservas, r.negocio.herramientas?.reservas ? "activo" : "apagado"],
+    ["Escuchar audios", !!r.negocio.transcribirAudios, r.negocio.transcribirAudios ? "activo" : "apagado"],
+  ];
+  for (const [nombre, on, det] of filas) {
+    const f = el("div", "capacidad");
+    f.append(el("span", `punto ${on ? "on" : "off"}`));
+    f.append(el("span", null, nombre));
+    f.append(el("span", "det", det));
+    cap.append(f);
+  }
+
+  // ─── Actividad ───
+  const tbody = $("#tabla-actividad").querySelector("tbody");
+  tbody.replaceChildren();
+  if (!r.actividad.length) {
+    const tr = document.createElement("tr");
+    const td = document.createElement("td");
+    td.colSpan = 5; td.append(el("span", "nota", "Todavía no pasó nada. Escribile al bot desde tu celular para ver la primera fila acá."));
+    tr.append(td); tbody.append(tr);
+  }
+  for (const a of r.actividad) {
+    const tr = document.createElement("tr");
+    const celda = (contenido) => { const td = document.createElement("td"); td.append(contenido); return td; };
+    tr.append(celda(el("span", null, ICONO[a.tipo] || a.tipo)));
+    tr.append(celda(el("span", null, a.quien)));
+    tr.append(celda(el("span", "nota", a.detalle)));
+    const clase = a.resultado === "sin respuesta" ? "chip avisa" : a.estado === "cancelada" ? "chip gris" : "chip ok";
+    tr.append(celda(el("span", clase, a.resultado)));
+    tr.append(celda(el("span", "cuando", haceCuanto(a.cuando))));
+    if (a.tipo === "conversacion" && a.id) {
+      tr.style.cursor = "pointer";
+      tr.addEventListener("click", () => {
+        document.querySelector('[data-tab="conversaciones"]').click();
+        setTimeout(() => abrirConversacion(a.id).catch(mostrarError), 100);
+      });
+    }
+    tbody.append(tr);
+  }
+
+  // El contador del menú: que se vea desde cualquier pantalla que hay trabajo.
+  const badge = $("#badge-huecos");
+  if (m.sinRespuesta) { badge.textContent = m.sinRespuesta; badge.classList.remove("oculto"); }
+  else badge.classList.add("oculto");
 }
 
 // ─── BOT ────────────────────────────────────────────────────────────────────

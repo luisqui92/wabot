@@ -187,6 +187,9 @@ routes/
   webhookWhatsapp.js       webhook de Meta (verificación + mensajes)
   panel.js                 API del panel
 public/                    el panel (sin framework, sin build)
+  index.html               barra lateral + una sección por pantalla
+  css/panel.css            tema claro con acento verde
+  js/panel.js              una función cargarX() por pantalla
 scripts/crear_usuario.js   alta del negocio y del primer usuario
 scripts/cambiar_numero.js  corrige el phoneNumberId de Meta de un negocio
 scripts/respaldo.js        copia diaria cifrada, verificada restaurándola

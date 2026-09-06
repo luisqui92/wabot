@@ -6,7 +6,8 @@
   <!-- El servidor reemplaza este href por el prefijo real (BASE_PATH). Con
        "/" el archivo tambien sirve tal cual si se abre desde la raiz. -->
   <base href="/">
-  <title>Panel del bot</title>
+  <title>Wabot</title>
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="css/panel.css">
 </head>
 <body>
@@ -22,24 +23,71 @@
 </section>
 
 <div id="vista-panel" class="oculto">
-  <header>
-    <strong>Panel del bot</strong>
+  <aside class="lateral">
+    <div class="marca">
+      <span class="logo">◆</span>
+      <span class="marca-nombre">WABOT</span>
+    </div>
+
+    <div class="workspace">
+      <span class="workspace-etiqueta">NEGOCIO</span>
+      <div class="workspace-caja"><span id="ws-nombre">—</span></div>
+    </div>
+
     <nav>
-      <button data-tab="bot" class="tab activa">Bot</button>
-      <button data-tab="conocimiento" class="tab">Conocimiento</button>
-      <button data-tab="catalogo" class="tab">Catálogo</button>
-      <button data-tab="pedidos" class="tab">Pedidos</button>
-      <button data-tab="agenda" class="tab">Agenda</button>
-      <button data-tab="clientes" class="tab">Clientes</button>
-      <button data-tab="conversaciones" class="tab">Conversaciones</button>
-      <button data-tab="huecos" class="tab">Huecos</button>
+      <button data-tab="resumen" class="tab activa"><span class="ic">◈</span> Resumen</button>
+      <button data-tab="bot" class="tab"><span class="ic">✦</span> Bot</button>
+      <button data-tab="conocimiento" class="tab"><span class="ic">▤</span> Conocimiento</button>
+      <button data-tab="catalogo" class="tab"><span class="ic">▦</span> Catálogo</button>
+      <button data-tab="pedidos" class="tab"><span class="ic">▧</span> Pedidos</button>
+      <button data-tab="agenda" class="tab"><span class="ic">▩</span> Agenda</button>
+      <button data-tab="clientes" class="tab"><span class="ic">◉</span> Clientes</button>
+      <button data-tab="conversaciones" class="tab"><span class="ic">◑</span> Conversaciones</button>
+      <button data-tab="huecos" class="tab"><span class="ic">◌</span> Huecos <span id="badge-huecos" class="pip oculto"></span></button>
     </nav>
-    <button id="btn-salir" class="sutil">Salir</button>
-  </header>
+
+    <div class="lateral-pie">
+      <a class="enlace-sutil" href="https://github.com/luisqui92/wabot" target="_blank" rel="noopener">Documentación</a>
+      <button id="btn-salir" class="sutil">Salir</button>
+    </div>
+  </aside>
 
   <main>
+    <!-- ─── RESUMEN ─────────────────────────────────────────────────── -->
+    <section id="tab-resumen" class="panel">
+      <header class="titulo">
+        <div>
+          <h1>Resumen</h1>
+          <p class="nota" id="resumen-sub">Lo que pasó mientras no mirabas.</p>
+        </div>
+        <span class="rango">Últimos 30 días</span>
+      </header>
+
+      <div id="avisos" class="avisos"></div>
+
+      <div class="kpis" id="kpis"></div>
+
+      <div class="dos-columnas">
+        <div class="destacado" id="destacado"></div>
+        <div class="tarjeta-panel">
+          <h3>Qué puede hacer el bot</h3>
+          <div id="capacidades" class="capacidades"></div>
+        </div>
+      </div>
+
+      <div class="tarjeta-panel">
+        <h3>Actividad reciente</h3>
+        <div class="tabla-scroll">
+          <table class="tabla" id="tabla-actividad">
+            <thead><tr><th>Qué pasó</th><th>Quién</th><th>Detalle</th><th>Resultado</th><th>Cuándo</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
     <!-- ─── BOT ─────────────────────────────────────────────────────── -->
-    <section id="tab-bot" class="panel">
+    <section id="tab-bot" class="panel oculto"><header class="titulo"><div><h1>Bot</h1><p class="nota">Cómo se presenta y qué está habilitado.</p></div></header>
       <p id="aviso-base" class="aviso oculto"></p>
       <form id="form-negocio" class="tarjeta ancha">
         <label>Nombre del negocio <input id="n-nombre" required></label>
@@ -66,7 +114,7 @@
     </section>
 
     <!-- ─── CONOCIMIENTO ────────────────────────────────────────────── -->
-    <section id="tab-conocimiento" class="panel oculto">
+    <section id="tab-conocimiento" class="panel oculto"><header class="titulo"><div><h1>Conocimiento</h1><p class="nota">Lo que el bot sabe. Si no está acá, no lo sabe.</p></div></header>
       <form id="form-documento" class="tarjeta ancha">
         <h2>Cargar información</h2>
         <label>Nombre <input id="d-nombre" placeholder="Precios 2026, Horarios, Preguntas frecuentes…" required></label>
@@ -90,7 +138,7 @@
     </section>
 
     <!-- ─── CATÁLOGO ────────────────────────────────────────────────── -->
-    <section id="tab-catalogo" class="panel oculto">
+    <section id="tab-catalogo" class="panel oculto"><header class="titulo"><div><h1>Catálogo</h1><p class="nota">Precios reales que el bot consulta al responder.</p></div></header>
       <form id="form-producto" class="tarjeta ancha">
         <h2>Agregar producto o servicio</h2>
         <label>Nombre <input id="p-nombre" required></label>
@@ -114,13 +162,13 @@
     </section>
 
     <!-- ─── PEDIDOS ─────────────────────────────────────────────────── -->
-    <section id="tab-pedidos" class="panel oculto">
+    <section id="tab-pedidos" class="panel oculto"><header class="titulo"><div><h1>Pedidos</h1><p class="nota">Lo que el bot anotó.</p></div></header>
       <p class="nota">Lo que el bot anotó. Confirmarlo, cobrarlo y entregarlo sigue siendo trabajo tuyo.</p>
       <div id="lista-pedidos" class="lista"></div>
     </section>
 
     <!-- ─── AGENDA ──────────────────────────────────────────────────── -->
-    <section id="tab-agenda" class="panel oculto">
+    <section id="tab-agenda" class="panel oculto"><header class="titulo"><div><h1>Agenda</h1><p class="nota">Turnos contra tu Google Calendar.</p></div></header>
       <form id="form-agenda" class="tarjeta ancha">
         <h2>Conectar Google Calendar</h2>
         <p class="nota" id="agenda-instrucciones"></p>
@@ -153,7 +201,7 @@
     </section>
 
     <!-- ─── CLIENTES ────────────────────────────────────────────────── -->
-    <section id="tab-clientes" class="panel oculto">
+    <section id="tab-clientes" class="panel oculto"><header class="titulo"><div><h1>Clientes</h1><p class="nota">Quién es cada persona que escribe.</p></div></header>
       <p class="nota">Lo que el bot sabe de cada persona. La ficha la escribe la IA sola; el nombre, las notas y las etiquetas los ponés vos.</p>
       <input id="buscar-clientes" placeholder="Buscar por nombre o número…">
       <div class="split">
@@ -163,7 +211,7 @@
     </section>
 
     <!-- ─── CONVERSACIONES ──────────────────────────────────────────── -->
-    <section id="tab-conversaciones" class="panel oculto">
+    <section id="tab-conversaciones" class="panel oculto"><header class="titulo"><div><h1>Conversaciones</h1><p class="nota">Todo lo que se habló.</p></div></header>
       <div class="split">
         <div id="lista-conversaciones" class="lista"></div>
         <div id="detalle-conversacion" class="detalle">
@@ -173,11 +221,11 @@
     </section>
 
     <!-- ─── HUECOS ──────────────────────────────────────────────────── -->
-    <section id="tab-huecos" class="panel oculto">
+    <section id="tab-huecos" class="panel oculto"><header class="titulo"><div><h1>Huecos</h1><p class="nota">Preguntas que el bot no supo responder.</p></div></header>
       <p class="nota">Preguntas reales que el bot no supo contestar. Respondé una y se guarda como conocimiento nuevo.</p>
       <div id="lista-huecos" class="lista"></div>
     </section>
-  </main>
+    </main>
 </div>
 
 <script src="js/panel.js"></script>

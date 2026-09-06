@@ -143,6 +143,93 @@ module.exports = function (app) {
     res.json({ ok: true });
   }));
 
+  // ─── RESUMEN ─────────────────────────────────────────────────────────────
+  // Los números de la portada. Se calculan de verdad: si algo no se mide
+  // todavía, no aparece. Un tablero con métricas inventadas es peor que no
+  // tener tablero, porque se decide con datos falsos.
+  app.get("/api/resumen", auth, asyncRoute(async (req, res) => {
+    const negocioId = req.sesion.negocioId;
+    const negocio = await Negocio.findById(negocioId).lean();
+    const hace30 = new Date(Date.now() - 30 * 86400000);
+    const hace7 = new Date(Date.now() - 7 * 86400000);
+
+    const [convs, pedidosNuevos, turnosProximos, productos, fragmentos, clientes] = await Promise.all([
+      Conversacion.find({ negocioId, actualizadoEn: { $gte: hace30 } }).select("mensajes actualizadoEn").lean(),
+      Pedido.countDocuments({ negocioId, estado: "nuevo" }),
+      Reserva.countDocuments({ negocioId, estado: "confirmada", inicio: { $gte: new Date() } }),
+      Producto.countDocuments({ negocioId, disponible: true }),
+      Fragmento.countDocuments({ negocioId, activo: true }),
+      Cliente.countDocuments({ negocioId }),
+    ]);
+
+    let mensajesCliente = 0, respuestasBot = 0, sinRespuesta = 0, convs7 = 0;
+    for (const c of convs) {
+      if (c.actualizadoEn >= hace7) convs7++;
+      for (const m of c.mensajes || []) {
+        if (m.rol === "cliente") mensajesCliente++;
+        else if (m.rol === "bot") { respuestasBot++; if (m.sinRespuesta) sinRespuesta++; }
+      }
+    }
+
+    // El número que de verdad importa: de todo lo que contestó el bot, cuánto
+    // pudo resolver con lo que tiene cargado. Es la métrica que dice si vale
+    // la pena tenerlo prendido.
+    const resueltas = respuestasBot ? Math.round(((respuestasBot - sinRespuesta) / respuestasBot) * 100) : null;
+
+    // Cosas que están mal configuradas y el dueño no tiene cómo saber.
+    const avisos = [];
+    if (!fragmentos) avisos.push({ nivel: "alto", texto: "El bot no tiene información cargada: no puede responder nada concreto.", ir: "conocimiento" });
+    if (!negocio.activo) avisos.push({ nivel: "alto", texto: "El bot está apagado. No le responde a nadie.", ir: "bot" });
+    if (negocio.herramientas?.pedidos && !productos) avisos.push({ nivel: "medio", texto: "Tomar pedidos está encendido pero el catálogo está vacío.", ir: "catalogo" });
+    if (negocio.herramientas?.reservas && !negocio.googleCalendarId) avisos.push({ nivel: "medio", texto: "Agendar turnos está encendido pero falta conectar el calendario.", ir: "agenda" });
+    if (sinRespuesta > 0) avisos.push({ nivel: "bajo", texto: `${sinRespuesta} pregunta${sinRespuesta === 1 ? "" : "s"} que el bot no supo responder.`, ir: "huecos" });
+
+    // Actividad reciente, de las tres fuentes, ordenada junta. Es lo que
+    // responde "¿qué pasó mientras no miraba?".
+    const [ultPedidos, ultReservas, ultConvs] = await Promise.all([
+      Pedido.find({ negocioId }).sort({ creadoEn: -1 }).limit(6).lean(),
+      Reserva.find({ negocioId }).sort({ creadaEn: -1 }).limit(6).lean(),
+      Conversacion.find({ negocioId }).sort({ actualizadoEn: -1 }).limit(6).lean(),
+    ]);
+
+    const actividad = [
+      ...ultPedidos.map(p => ({ tipo: "pedido", cuando: p.creadoEn,
+        quien: p.numero, detalle: p.items.map(i => `${i.cantidad}x ${i.nombre}`).join(", "),
+        resultado: `${p.moneda} ${(p.totalCentavos / 100).toFixed(2)}`, estado: p.estado })),
+      ...ultReservas.map(r => ({ tipo: "turno", cuando: r.creadaEn,
+        quien: r.nombre || r.numero, detalle: r.motivo || "Turno agendado",
+        resultado: enZona(r.inicio, negocio.zonaHoraria).fecha + " " + enZona(r.inicio, negocio.zonaHoraria).hora,
+        estado: r.estado })),
+      ...ultConvs.map(c => {
+        const ultimo = c.mensajes[c.mensajes.length - 1];
+        return { tipo: "conversacion", cuando: c.actualizadoEn, quien: c.nombrePerfil || c.numero,
+          detalle: (() => { const n = c.mensajes.filter(m => m.rol === "cliente").length;
+          return `${n} mensaje${n === 1 ? "" : "s"} del cliente`; })(),
+          resultado: c.mensajes.some(m => m.sinRespuesta) ? "sin respuesta" : "respondida",
+          estado: c.pausado ? "pausada" : "activa", id: c._id };
+      }),
+    ].sort((a, b) => new Date(b.cuando) - new Date(a.cuando)).slice(0, 12);
+
+    res.json({
+      negocio: { nombre: negocio.nombre, activo: negocio.activo, herramientas: negocio.herramientas, transcribirAudios: negocio.transcribirAudios },
+      metricas: {
+        conversaciones30: convs.length,
+        conversaciones7: convs7,
+        mensajesCliente,
+        respuestasBot,
+        sinRespuesta,
+        resueltasPorcentaje: resueltas,
+        pedidosNuevos,
+        turnosProximos,
+        clientes,
+        productos,
+        fragmentos,
+      },
+      avisos,
+      actividad,
+    });
+  }));
+
   // ─── AGENDA ──────────────────────────────────────────────────────────────
   app.get("/api/agenda/config", auth, asyncRoute(async (req, res) => {
     const n = await Negocio.findById(req.sesion.negocioId).lean();

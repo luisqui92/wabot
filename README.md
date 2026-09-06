@@ -169,7 +169,7 @@ URL ya armada con el prefijo — copiala de ahí en vez de escribirla a mano.
 ```
 config/index.js            CONFIG, logger, validación al arrancar
 db/models.js               Negocio, Usuario, Documento, Fragmento, Producto,
-                           Pedido, Reserva, Cliente, Conversacion
+                           Pedido, Pago, Reserva, Cliente, Conversacion
 services/
   metaWhatsapp.js          envío por la Graph API, botones/listas, firma
   asistenteIA.js           el prompt y la llamada al modelo
@@ -177,6 +177,7 @@ services/
   conversacion.js          orquestación de un mensaje entrante
   cliente.js               memoria: quién es cada persona y su ficha
   audio.js                 notas de voz: descarga de Meta y transcripción
+  comprobante.js           lee y verifica comprobantes de pago
   googleCalendar.js        cuenta de servicio y REST de Calendar
   agenda.js                turnos: horario x calendario x anticipación
   herramientas.js          lo que el bot PUEDE HACER — el único archivo a
@@ -208,6 +209,14 @@ El modelo solo dice qué opciones hay; si van como botones (hasta 3) o como
 lista (hasta 10), y los recortes de longitud que exige Meta, los resuelve
 `services/metaWhatsapp.js`. La respuesta siempre tiene sentido sin los
 botones, porque muchos clientes escriben igual.
+
+## Cobros
+
+El bot manda el QR con el monto exacto, recibe la captura del comprobante, la
+lee y la compara — ver [`PAGOS.md`](PAGOS.md). **Nunca marca un pedido como
+pagado**: una captura se falsifica en dos minutos, así que el bot extrae y
+avisa, y aceptar es de una persona. Detecta pagos de menos, de más, y el
+fraude más común, que es reenviar el mismo comprobante.
 
 ## Agenda
 

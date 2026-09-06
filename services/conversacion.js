@@ -8,6 +8,8 @@ const { responder } = require("./asistenteIA");
 const { enviarTexto, enviarConOpciones } = require("./metaWhatsapp");
 const { obtenerOCrear, armarContexto, refrescarResumenSiCorresponde } = require("./cliente");
 const { descargarMedia, transcribir, vocabularioDe } = require("./audio");
+const { leerComprobante, verificar, hashDe } = require("./comprobante");
+const { Pedido, Pago } = require("../db/models");
 
 // El historial embebido se recorta al guardar y no al leer: si solo se
 // recortara al leer, un cliente de años haria crecer el documento hasta el
@@ -57,6 +59,83 @@ async function transcribirNotaDeVoz({ phoneNumberId, numero, mediaId }) {
     // sabe si lo estamos ignorando o si se rompió algo.
     await enviarTexto(phoneNumberId, numero,
       "No pude escuchar tu audio 🙏 ¿me lo escribís? En un momento te respondo.").catch(() => {});
+    return null;
+  }
+}
+
+// Una imagen que mandó un cliente. Si el negocio cobra por QR, se trata como
+// comprobante: se lee, se compara y se avisa al dueño. Nunca se marca nada
+// como pagado — eso lo decide una persona en el panel.
+async function procesarComprobante({ phoneNumberId, numero, mediaId, nombrePerfil }) {
+  const negocio = await Negocio.findOne({ phoneNumberId });
+  if (!negocio?.activo) return null;
+
+  if (!negocio.herramientas?.cobros) {
+    log.info(`[COBRO] ${numero} mandó una imagen pero el negocio no tiene cobros activados`);
+    return null;
+  }
+
+  const cliente = await obtenerOCrear(negocio._id, numero, nombrePerfil);
+
+  try {
+    const { buffer, mime } = await descargarMedia(mediaId, phoneNumberId);
+    const hashImagen = hashDe(buffer);
+
+    // El pedido al que corresponde. Puede no haber ninguno: alguien puede
+    // pagar antes de pedir, y eso también hay que registrarlo en vez de
+    // perderlo.
+    const pedido = await Pedido.findOne({
+      negocioId: negocio._id, numero, estado: { $in: ["nuevo", "confirmado"] }, pagado: false,
+    }).sort({ creadoEn: -1 });
+
+    const datos = await leerComprobante(buffer, mime);
+    const { detectadoCentavos, alertas } = await verificar({
+      negocioId: negocio._id, datos, hashImagen,
+      esperadoCentavos: pedido?.totalCentavos || 0,
+      moneda: pedido?.moneda || "BOB",
+    });
+
+    if (!pedido) alertas.push("No hay ningún pedido pendiente de este número: el pago no está asociado a nada.");
+
+    const pago = await Pago.create({
+      negocioId: negocio._id, clienteId: cliente._id, pedidoId: pedido?._id || null, numero,
+      esperadoCentavos: pedido?.totalCentavos || 0,
+      detectadoCentavos, moneda: pedido?.moneda || datos?.moneda || "BOB",
+      banco: datos?.banco || "", referencia: datos?.referencia ? String(datos.referencia).trim() : "",
+      fechaComprobante: datos?.fecha || "", emisor: datos?.emisor || "",
+      hashImagen, imagen: buffer, imagenMime: mime, alertas,
+    });
+
+    log.info(`[COBRO] ${numero} — comprobante ${detectadoCentavos !== null ? (detectadoCentavos / 100).toFixed(2) : "ilegible"}, ${alertas.length} alerta(s)`);
+
+    // Aviso al dueño. Se manda SIEMPRE, coincida o no: es él quien decide, y
+    // un pago que coincide perfecto pero del que nadie se entera es un pedido
+    // que no sale.
+    if (negocio.numeroEscalamiento) {
+      const monto = detectadoCentavos !== null ? `${pago.moneda} ${(detectadoCentavos / 100).toFixed(2)}` : "monto ilegible";
+      const esperado = pedido ? ` (esperado ${pago.moneda} ${(pedido.totalCentavos / 100).toFixed(2)})` : "";
+      const cuerpo = [
+        `💰 Comprobante nuevo de ${cliente.nombre || cliente.nombrePerfil || numero}`,
+        `${monto}${esperado}`,
+        pago.banco ? `Banco: ${pago.banco}` : "",
+        pago.referencia ? `Ref: ${pago.referencia}` : "",
+        alertas.length ? `\n⚠️ ${alertas.join("\n⚠️ ")}` : "\n✅ El monto coincide.",
+        `\nAceptalo o rechazalo en el panel.`,
+      ].filter(Boolean).join("\n");
+      enviarTexto(phoneNumberId, negocio.numeroEscalamiento, cuerpo)
+        .catch(e => log.error("[COBRO] No se pudo avisar:", e.message));
+    }
+
+    // Al cliente NO se le dice si el monto coincide. Confirmarle un pago que
+    // todavía nadie miró es exactamente el agujero que deja pasar un
+    // comprobante falso.
+    await enviarTexto(phoneNumberId, numero,
+      "¡Gracias! Recibimos tu comprobante 🧾 Lo estamos verificando y en un momento te confirmamos.");
+    return pago;
+  } catch (e) {
+    log.error("[COBRO] No se pudo procesar el comprobante:", e.message);
+    await enviarTexto(phoneNumberId, numero,
+      "Recibimos tu imagen pero no la pudimos leer 🙏 En un momento te contacta una persona.").catch(() => {});
     return null;
   }
 }
@@ -150,4 +229,4 @@ async function procesarMensajeEntrante({ phoneNumberId, numero, texto, nombrePer
   }
 }
 
-module.exports = { procesarMensajeEntrante, transcribirNotaDeVoz, agregarMensaje };
+module.exports = { procesarMensajeEntrante, transcribirNotaDeVoz, procesarComprobante, agregarMensaje };

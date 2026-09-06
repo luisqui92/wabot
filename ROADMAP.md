@@ -203,8 +203,7 @@ desde una planilla.
 
 Encima de esto ya se construyeron las de agenda —`consultar_disponibilidad`,
 `crear_reserva`, `cancelar_reserva`— sin tocar el orquestador, que es la prueba
-de que la costura estaba bien puesta. Siguen la misma vía `consultar_stock` y
-`generar_pago`.
+de que la costura estaba bien puesta. Y las de cobro. Sigue la misma vía `consultar_stock`.
 
 ### Módulo 2b — Agenda con Google Calendar ✅ HECHO
 Ver [`AGENDA.md`](AGENDA.md).

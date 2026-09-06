@@ -16,9 +16,9 @@
 // partir de lo que escribió un desconocido por WhatsApp — tratarlos como
 // confiables sería dejar que un cliente lea el catálogo de otro negocio.
 const { CONFIG, log } = require("../config");
-const { Producto, Pedido, Reserva } = require("../db/models");
+const { Producto, Pedido, Reserva, Negocio } = require("../db/models");
 const { disponibilidad, reservar, cancelar, enZona, DIAS } = require("./agenda");
-const { enviarTexto } = require("./metaWhatsapp");
+const { enviarTexto, enviarImagen } = require("./metaWhatsapp");
 
 function precio(centavos, moneda) {
   return `${moneda} ${(centavos / 100).toFixed(2)}`;
@@ -161,6 +161,47 @@ const HERRAMIENTAS = [
       }
 
       return `Pedido registrado. Detalle: ${detalle}. Total: ${precio(totalCentavos, moneda)}. Confirmale al cliente el detalle y el total, y avisale que en breve lo contactan para coordinar.`;
+    },
+  },
+
+  // ─── COBROS ───────────────────────────────────────────────────────────────
+  {
+    nombre: "enviar_datos_de_pago",
+    requiere: "cobros",
+    definicion: {
+      type: "function",
+      function: {
+        name: "enviar_datos_de_pago",
+        description:
+          "Le manda al cliente el QR para pagar y el monto exacto. Usala cuando ya hay un pedido registrado " +
+          "y el cliente quiere pagar o pregunta cómo pagar. Después de usarla, pedile que mande la captura del comprobante.",
+        parameters: { type: "object", properties: {}, required: [] },
+      },
+    },
+    async ejecutar(negocio, args, contexto) {
+      const completo = await Negocio.findById(negocio._id).select("+qrImagen").lean();
+      if (!completo?.qrToken) return "El negocio todavía no cargó su QR de cobro. Decile al cliente que en un momento lo contacta una persona para coordinar el pago.";
+
+      // El último pedido sin pagar. Cobrar sin saber cuánto no sirve de nada.
+      const pedido = await Pedido.findOne({
+        negocioId: negocio._id, numero: contexto?.numero,
+        estado: { $in: ["nuevo", "confirmado"] }, pagado: false,
+      }).sort({ creadoEn: -1 }).lean();
+
+      if (!pedido) return "Este cliente no tiene ningún pedido pendiente de pago. Primero registrá el pedido.";
+
+      const monto = `${pedido.moneda} ${(pedido.totalCentavos / 100).toFixed(2)}`;
+      const pie = [`Monto exacto: ${monto}`, completo.instruccionesPago].filter(Boolean).join("\n\n");
+
+      try {
+        await enviarImagen(contexto.phoneNumberId, contexto.numero,
+          `${CONFIG.APP_URL}${CONFIG.BASE_PATH}/qr/${completo.qrToken}.png`, pie);
+      } catch (e) {
+        log.error("[COBRO] No se pudo enviar el QR:", e.message);
+        return "No se pudo enviar el QR. Decile al cliente que en un momento lo contacta una persona.";
+      }
+
+      return `QR enviado con el monto ${monto}. Ahora pedile que mande la CAPTURA del comprobante cuando termine de pagar, y avisale que un humano lo confirma.`;
     },
   },
 

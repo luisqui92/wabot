@@ -2,7 +2,7 @@
 // de requireAuth y filtrado por req.sesion.negocioId: ningún endpoint acepta
 // un negocioId que venga del cliente, porque eso sería dejar que un negocio
 // lea o edite la base de conocimiento de otro.
-const { Negocio, Usuario, Documento, Fragmento, Producto, Pedido, Reserva, Cliente, Conversacion } = require("../db/models");
+const { Negocio, Usuario, Documento, Fragmento, Producto, Pedido, Pago, Reserva, Cliente, Conversacion } = require("../db/models");
 const { verificarPassword, generarToken, requireAuth } = require("../services/auth");
 const { asyncRoute, ErrorHttp, obtenerOFallar } = require("../services/httpHelpers");
 const { fragmentar, armarContexto } = require("../services/baseConocimiento");
@@ -12,6 +12,8 @@ const { transcribir, MAX_BYTES } = require("../services/audio");
 const express = require("express");
 const { disponibilidad, cancelar, enZona, DIAS } = require("../services/agenda");
 const { emailCuentaDeServicio } = require("../services/googleCalendar");
+const { MAX_BYTES: MAX_IMAGEN } = require("../services/comprobante");
+const crypto = require("crypto");
 const { enviarTexto } = require("../services/metaWhatsapp");
 
 const auth = requireAuth(["admin"]);
@@ -57,6 +59,7 @@ module.exports = function (app) {
       cambios["herramientas.catalogo"] = !!req.body.herramientas.catalogo;
       cambios["herramientas.pedidos"] = !!req.body.herramientas.pedidos;
       cambios["herramientas.reservas"] = !!req.body.herramientas.reservas;
+      cambios["herramientas.cobros"] = !!req.body.herramientas.cobros;
     }
     // phoneNumberId no está en la lista a propósito: cambiarlo desde el panel
     // desconecta el bot de su número sin que nadie se entere hasta que un
@@ -314,6 +317,78 @@ module.exports = function (app) {
     const negocio = await Negocio.findById(req.sesion.negocioId);
     await cancelar(negocio, reserva);
     res.json({ ok: true });
+  }));
+
+  // ─── COBROS ──────────────────────────────────────────────────────────────
+  app.get("/api/cobros/config", auth, asyncRoute(async (req, res) => {
+    const n = await Negocio.findById(req.sesion.negocioId).lean();
+    res.json({
+      tieneQr: !!n.qrToken,
+      qrUrl: n.qrToken ? `${CONFIG.BASE_PATH}/qr/${n.qrToken}.png` : "",
+      instruccionesPago: n.instruccionesPago || "",
+      // Sin APP_URL el QR no se puede mandar: Meta lo descarga por URL
+      // pública, y sin dominio no hay URL que darle.
+      faltaAppUrl: !CONFIG.APP_URL,
+    });
+  }));
+
+  app.post("/api/cobros/qr", auth, express.raw({ type: "image/*", limit: MAX_IMAGEN }),
+    asyncRoute(async (req, res) => {
+      if (!Buffer.isBuffer(req.body) || !req.body.length) throw new ErrorHttp(400, "No llegó ninguna imagen");
+      const n = await Negocio.findById(req.sesion.negocioId);
+      n.qrImagen = req.body;
+      n.qrMime = req.headers["content-type"] || "image/png";
+      // Token nuevo en cada carga: si el QR anterior circuló y el negocio lo
+      // cambia porque cambió de cuenta, el viejo tiene que dejar de servir.
+      n.qrToken = crypto.randomBytes(16).toString("hex");
+      await n.save();
+      res.json({ qrUrl: `${CONFIG.BASE_PATH}/qr/${n.qrToken}.png` });
+    }));
+
+  app.put("/api/cobros/config", auth, asyncRoute(async (req, res) => {
+    const n = await Negocio.findById(req.sesion.negocioId);
+    if (req.body.instruccionesPago !== undefined) n.instruccionesPago = String(req.body.instruccionesPago).slice(0, 600);
+    await n.save();
+    res.json({ ok: true });
+  }));
+
+  app.get("/api/pagos", auth, asyncRoute(async (req, res) => {
+    const filtro = { negocioId: req.sesion.negocioId };
+    if (req.query.estado) filtro.estado = req.query.estado;
+    const pagos = await Pago.find(filtro).sort({ creadoEn: -1 }).limit(100).lean();
+    res.json(pagos.map(p => ({
+      ...p,
+      esperado: (p.esperadoCentavos / 100).toFixed(2),
+      detectado: p.detectadoCentavos !== null ? (p.detectadoCentavos / 100).toFixed(2) : null,
+    })));
+  }));
+
+  // La imagen se sirve aparte y solo autenticado: es un documento bancario de
+  // un cliente, no algo que deba viajar en el listado ni quedar en un caché.
+  app.get("/api/pagos/:id/imagen", auth, asyncRoute(async (req, res) => {
+    const p = await Pago.findOne({ _id: req.params.id, negocioId: req.sesion.negocioId }).select("+imagen").lean();
+    if (!p?.imagen) throw new ErrorHttp(404, "Sin imagen");
+    res.set("Content-Type", p.imagenMime || "image/jpeg");
+    res.set("Cache-Control", "private, no-store");
+    res.send(p.imagen);
+  }));
+
+  app.put("/api/pagos/:id", auth, asyncRoute(async (req, res) => {
+    const pago = await obtenerOFallar(Pago, { _id: req.params.id, negocioId: req.sesion.negocioId }, "Pago no encontrado");
+    const estado = req.body?.estado;
+    if (!["aceptado", "rechazado", "pendiente"].includes(estado)) throw new ErrorHttp(400, "Estado inválido");
+
+    pago.estado = estado;
+    pago.resueltoEn = estado === "pendiente" ? null : new Date();
+    await pago.save();
+
+    // Marcar el pedido como pagado pasa ACÁ y solo acá: es la única vía, y
+    // requiere que una persona haya apretado el botón.
+    if (pago.pedidoId) {
+      await Pedido.updateOne({ _id: pago.pedidoId, negocioId: pago.negocioId },
+        { pagado: estado === "aceptado" });
+    }
+    res.json(pago);
   }));
 
   // ─── TRANSCRIBIR ─────────────────────────────────────────────────────────

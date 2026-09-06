@@ -4,7 +4,7 @@
 const { CONFIG, log } = require("../config");
 const { firmaValida, marcarLeido } = require("../services/metaWhatsapp");
 const { procesarMensajeEntrante } = require("../services/conversacion");
-const { transcribirNotaDeVoz } = require("../services/conversacion");
+const { transcribirNotaDeVoz, procesarComprobante } = require("../services/conversacion");
 
 module.exports = function (app) {
   // ─── VERIFICACIÓN ────────────────────────────────────────────────────────
@@ -56,8 +56,18 @@ async function procesarWebhook(body) {
           if (!texto) continue; // ya se le avisó al cliente adentro
         }
 
+        // Una imagen es, casi siempre, un comprobante de pago. Se procesa
+        // aparte del flujo de texto: no hay nada que "responder", hay que
+        // leerla, verificarla y avisarle al dueño.
+        if (!texto && msg.type === "image" && msg.image?.id) {
+          marcarLeido(phoneNumberId, msg.id).catch(() => {});
+          await procesarComprobante({ phoneNumberId, numero: msg.from, mediaId: msg.image.id,
+            nombrePerfil: value?.contacts?.[0]?.profile?.name || "" });
+          continue;
+        }
+
         // Lo que sigue sin soportarse se registra en vez de desaparecer: si
-        // alguien manda una foto y el bot no contesta, el log dice por qué.
+        // alguien manda un documento y el bot no contesta, el log dice por qué.
         if (!texto) {
           log.info(`[WEBHOOK] ${msg.from} mandó un ${msg.type} — tipo no soportado, ignorado`);
           continue;

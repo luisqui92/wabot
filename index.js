@@ -77,6 +77,24 @@ const htmlPanel = fs
 
 router.get(["/", "/index.html"], (_req, res) => res.type("html").send(htmlPanel));
 
+// El QR de cobro, público a propósito: Meta lo descarga por URL para
+// mostrárselo al cliente, así que no puede estar detrás de autenticación. No
+// es un secreto —es un QR que el negocio le muestra a cualquiera que va a
+// pagar— y el token aleatorio evita que se pueda enumerar.
+router.get("/qr/:token.png", async (req, res) => {
+  try {
+    const { Negocio } = require("./db/models");
+    const n = await Negocio.findOne({ qrToken: req.params.token }).select("+qrImagen").lean();
+    if (!n?.qrImagen) return res.sendStatus(404);
+    res.set("Content-Type", n.qrMime || "image/png");
+    res.set("Cache-Control", "public, max-age=300");
+    res.send(n.qrImagen);
+  } catch (e) {
+    log.error("[QR]", e.message);
+    res.sendStatus(500);
+  }
+});
+
 router.get("/salud", (_req, res) => res.json({
   ok: true,
   mongo: mongoose.connection.readyState === 1,

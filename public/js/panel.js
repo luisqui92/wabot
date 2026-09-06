@@ -76,6 +76,7 @@ const CARGADORES = {
   catalogo: cargarCatalogo,
   pedidos: cargarPedidos,
   agenda: cargarAgenda,
+  pagos: cargarPagos,
   clientes: cargarClientes,
   conversaciones: cargarConversaciones,
   huecos: cargarHuecos,
@@ -244,6 +245,7 @@ async function cargarNegocio() {
   $("#h-catalogo").checked = !!n.herramientas?.catalogo;
   $("#h-pedidos").checked = !!n.herramientas?.pedidos;
   $("#h-reservas").checked = !!n.herramientas?.reservas;
+  $("#h-cobros").checked = !!n.herramientas?.cobros;
   $("#n-audios").checked = !!n.transcribirAudios;
 
   // El aviso importa: significa que hay información cargada que el bot NO
@@ -270,7 +272,7 @@ $("#form-negocio").addEventListener("submit", async (e) => {
         mensajeSinInfo: $("#n-mensajeSinInfo").value,
         numeroEscalamiento: $("#n-numeroEscalamiento").value.replace(/[^0-9]/g, ""),
         activo: $("#n-activo").checked,
-        herramientas: { catalogo: $("#h-catalogo").checked, pedidos: $("#h-pedidos").checked, reservas: $("#h-reservas").checked },
+        herramientas: { catalogo: $("#h-catalogo").checked, pedidos: $("#h-pedidos").checked, reservas: $("#h-reservas").checked, cobros: $("#h-cobros").checked },
         transcribirAudios: $("#n-audios").checked,
       }),
     });
@@ -626,6 +628,109 @@ async function cargarPedidos() {
     item.append(estados);
     cont.append(item);
   }
+}
+
+// ─── PAGOS ──────────────────────────────────────────────────────────────────
+$("#qr-archivo").addEventListener("change", async (e) => {
+  const archivo = e.target.files[0];
+  if (!archivo) return;
+  $("#qr-estado").textContent = "Subiendo…";
+  try {
+    const res = await fetch("api/cobros/qr", { method: "POST",
+      headers: { "Content-Type": archivo.type, Authorization: `Bearer ${token}` }, body: archivo });
+    const d = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(d.error || `Error ${res.status}`);
+    $("#qr-estado").textContent = "QR cargado ✓";
+    await cargarPagos();
+  } catch (err) { $("#qr-estado").textContent = ""; mostrarError(err); }
+});
+
+$("#btn-guardar-cobros").addEventListener("click", async () => {
+  try {
+    await api("/cobros/config", { method: "PUT", body: JSON.stringify({ instruccionesPago: $("#qr-instrucciones").value }) });
+    $("#qr-estado").textContent = "Guardado ✓";
+    setTimeout(() => { $("#qr-estado").textContent = ""; }, 2500);
+  } catch (err) { mostrarError(err); }
+});
+
+const ETIQUETA_PAGO = { pendiente: "Pendiente", aceptado: "✅ Aceptado", rechazado: "✖ Rechazado" };
+
+async function cargarPagos() {
+  const [cfg, pagos] = await Promise.all([api("/cobros/config"), api("/pagos")]);
+
+  $("#qr-instrucciones").value = cfg.instruccionesPago;
+  const img = $("#qr-actual");
+  if (cfg.tieneQr) { img.src = cfg.qrUrl + "?" + Date.now(); img.classList.remove("oculto"); }
+  else img.classList.add("oculto");
+
+  // Sin APP_URL el QR no se puede mandar, y el síntoma sería que el bot dice
+  // que lo envió y al cliente no le llega nada.
+  $("#qr-aviso").textContent = cfg.faltaAppUrl
+    ? "⚠ Falta APP_URL en el .env del servidor. Sin eso Meta no puede descargar el QR y el envío falla."
+    : cfg.tieneQr ? "Este es el QR que el bot le manda a los clientes." : "Todavía no cargaste tu QR.";
+
+  const cont = $("#lista-pagos");
+  cont.replaceChildren();
+  if (!pagos.length) { cont.append(el("p", "nota", "Ningún comprobante todavía.")); return; }
+
+  for (const p of pagos) {
+    const item = el("div", "item");
+    const fila = el("div", "fila");
+    fila.append(el("h3", null, p.emisor || p.numero));
+    fila.append(el("span", `badge${p.estado === "pendiente" ? " alerta" : ""}`, ETIQUETA_PAGO[p.estado]));
+    item.append(fila);
+
+    const caja = el("div", "comprobante");
+    const foto = document.createElement("img");
+    // La imagen va autenticada: es un documento bancario de un cliente.
+    fetch(`api/pagos/${p._id}/imagen`, { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => r.ok ? r.blob() : null)
+      .then(b => { if (b) foto.src = URL.createObjectURL(b); })
+      .catch(() => {});
+    foto.addEventListener("click", () => window.open(foto.src, "_blank"));
+    caja.append(foto);
+
+    const datos = el("div");
+    const montos = el("div", "montos");
+    montos.append(el("span", "grande", p.detectado !== null ? `${p.moneda} ${p.detectado}` : "ilegible"));
+    if (p.esperadoCentavos) montos.append(el("span", "nota", `esperado ${p.moneda} ${p.esperado}`));
+    datos.append(montos);
+    for (const [et, val] of [["Banco", p.banco], ["Referencia", p.referencia], ["Fecha", p.fechaComprobante]]) {
+      if (val) datos.append(el("p", "meta", `${et}: ${val}`));
+    }
+    datos.append(el("p", "meta", `${p.numero} · ${haceCuanto(p.creadoEn)}`));
+
+    if (p.alertas?.length) {
+      for (const a of p.alertas) datos.append(el("div", "alerta-pago", a));
+    } else if (p.detectado !== null && p.esperadoCentavos) {
+      datos.append(el("div", "coincide", "El monto coincide con el pedido."));
+    }
+
+    if (p.estado === "pendiente") {
+      const acciones = el("div", "estados");
+      const aceptar = el("button", null, "Aceptar pago");
+      aceptar.addEventListener("click", async () => {
+        if (!confirm("¿Aceptar este pago? El pedido queda marcado como pagado.")) return;
+        try { await api(`/pagos/${p._id}`, { method: "PUT", body: JSON.stringify({ estado: "aceptado" }) }); await cargarPagos(); }
+        catch (err) { mostrarError(err); }
+      });
+      const rechazar = el("button", "peligro", "Rechazar");
+      rechazar.addEventListener("click", async () => {
+        try { await api(`/pagos/${p._id}`, { method: "PUT", body: JSON.stringify({ estado: "rechazado" }) }); await cargarPagos(); }
+        catch (err) { mostrarError(err); }
+      });
+      acciones.append(aceptar, rechazar);
+      datos.append(acciones);
+    }
+    caja.append(datos);
+    item.append(caja);
+    cont.append(item);
+  }
+
+  const pend = pagos.filter(p => p.estado === "pendiente").length;
+  const badge = $("#badge-pagos");
+  if (pend) { badge.textContent = pend; badge.classList.remove("oculto"); }
+  else badge.classList.add("oculto");
 }
 
 // ─── CLIENTES ───────────────────────────────────────────────────────────────

@@ -49,6 +49,7 @@ const negocioSchema = new mongoose.Schema({
     catalogo: { type: Boolean, default: true },
     pedidos: { type: Boolean, default: false },
     reservas: { type: Boolean, default: false },
+    cobros: { type: Boolean, default: false },
   },
 
   // ─── AGENDA ──────────────────────────────────────────────────────────────
@@ -83,6 +84,19 @@ const negocioSchema = new mongoose.Schema({
     }],
     default: [],
   },
+
+  // ─── COBROS ──────────────────────────────────────────────────────────────
+  // El QR de cobro del negocio, tal cual lo exporta su banco. Se guarda acá y
+  // no en disco para que entre en los respaldos sin trabajo extra: un QR
+  // perdido es un negocio que no puede cobrar.
+  qrImagen: { type: Buffer, select: false },
+  qrMime: { type: String, default: "" },
+  // Ruta pública aleatoria desde donde WhatsApp descarga el QR para mostrarlo.
+  // Aleatoria y no el id del negocio para que no se pueda enumerar.
+  qrToken: { type: String, default: "", index: true },
+  // Qué escribirle al cliente junto con el QR: nombre del titular, banco, o
+  // lo que el negocio quiera aclarar.
+  instruccionesPago: { type: String, default: "" },
 
   // Transcribir las notas de voz de los clientes. Se paga por minuto, así que
   // es del dueño la decisión — pero viene encendido: un audio ignorado deja al
@@ -196,6 +210,9 @@ const pedidoSchema = new mongoose.Schema({
   moneda: { type: String, default: "BOB" },
   notas: { type: String, default: "" },
   estado: { type: String, enum: ["nuevo", "confirmado", "entregado", "cancelado"], default: "nuevo", index: true },
+  // Se marca solo cuando una persona ACEPTA el pago, nunca por lo que diga la
+  // verificación automática.
+  pagado: { type: Boolean, default: false },
   creadoEn: { type: Date, default: Date.now, index: true },
 });
 const Pedido = mongoose.model("Pedido", pedidoSchema);
@@ -227,6 +244,45 @@ const reservaSchema = new mongoose.Schema({
   creadaEn: { type: Date, default: Date.now },
 });
 const Reserva = mongoose.model("Reserva", reservaSchema);
+
+// ─── PAGO ───────────────────────────────────────────────────────────────────
+// Un comprobante que mandó un cliente. Nunca se marca como pagado solo: una
+// captura de comprobante se falsifica en dos minutos, así que el bot extrae y
+// compara, y quien acepta es una persona. El estado inicial es siempre
+// "pendiente", pase lo que pase la verificación.
+const pagoSchema = new mongoose.Schema({
+  negocioId: { type: mongoose.Schema.Types.ObjectId, ref: "Negocio", required: true, index: true },
+  clienteId: { type: mongoose.Schema.Types.ObjectId, ref: "Cliente", default: null },
+  pedidoId: { type: mongoose.Schema.Types.ObjectId, ref: "Pedido", default: null, index: true },
+  numero: { type: String, required: true, index: true },
+
+  esperadoCentavos: { type: Number, default: 0 },
+  // Lo que el modelo leyó en la imagen. null cuando no pudo leerlo — que es
+  // distinto de cero, y por eso no se usa 0 como "no se sabe".
+  detectadoCentavos: { type: Number, default: null },
+  moneda: { type: String, default: "BOB" },
+
+  // Todo lo que se pudo sacar del comprobante, para que el dueño lo vea sin
+  // tener que abrir la imagen.
+  banco: { type: String, default: "" },
+  referencia: { type: String, default: "" },
+  fechaComprobante: { type: String, default: "" },
+  emisor: { type: String, default: "" },
+
+  // El fraude más común no es falsificar: es mandar DOS VECES el mismo
+  // comprobante. El hash del archivo lo detecta sin guardar nada raro.
+  hashImagen: { type: String, default: "", index: true },
+  imagen: { type: Buffer, select: false },
+  imagenMime: { type: String, default: "" },
+
+  // Lo que la verificación encontró mal. Vacío = todo coincide.
+  alertas: { type: [String], default: [] },
+
+  estado: { type: String, enum: ["pendiente", "aceptado", "rechazado"], default: "pendiente", index: true },
+  creadoEn: { type: Date, default: Date.now, index: true },
+  resueltoEn: { type: Date, default: null },
+});
+const Pago = mongoose.model("Pago", pagoSchema);
 
 // ─── CLIENTE ────────────────────────────────────────────────────────────────
 // Quién es la persona, separado de lo que dijo. Va en su propia colección y no
@@ -300,4 +356,4 @@ const conversacionSchema = new mongoose.Schema({
 conversacionSchema.index({ negocioId: 1, numero: 1 }, { unique: true });
 const Conversacion = mongoose.model("Conversacion", conversacionSchema);
 
-module.exports = { Negocio, Usuario, Documento, Fragmento, Producto, Pedido, Reserva, Cliente, Conversacion };
+module.exports = { Negocio, Usuario, Documento, Fragmento, Producto, Pedido, Pago, Reserva, Cliente, Conversacion };

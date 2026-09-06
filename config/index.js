@@ -31,6 +31,10 @@ const CONFIG = {
 
   OPENAI_KEY: process.env.OPENAI_KEY,
   OPENAI_MODELO: process.env.OPENAI_MODELO || "gpt-4o-mini",
+  // Leer un comprobante es otra tarea que conversar: se separa el modelo para
+  // poder subir solo este a uno mejor si los comprobantes salen mal leídos,
+  // sin encarecer cada mensaje de cada conversación.
+  OPENAI_MODELO_VISION: process.env.OPENAI_MODELO_VISION || "gpt-4o-mini",
   // Configurable para poder apuntar a un endpoint compatible (o a un stub en
   // las pruebas) sin tocar código. Cambiar de proveedor sigue siendo tocar
   // asistenteIA.js, pero uno compatible con la API de OpenAI entra por acá.

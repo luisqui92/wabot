@@ -41,6 +41,7 @@
       <button data-tab="catalogo" class="tab"><span class="ic">▦</span> Catálogo</button>
       <button data-tab="pedidos" class="tab"><span class="ic">▧</span> Pedidos</button>
       <button data-tab="agenda" class="tab"><span class="ic">▩</span> Agenda</button>
+      <button data-tab="pagos" class="tab"><span class="ic">◎</span> Pagos <span id="badge-pagos" class="pip oculto"></span></button>
       <button data-tab="clientes" class="tab"><span class="ic">◉</span> Clientes</button>
       <button data-tab="conversaciones" class="tab"><span class="ic">◑</span> Conversaciones</button>
       <button data-tab="huecos" class="tab"><span class="ic">◌</span> Huecos <span id="badge-huecos" class="pip oculto"></span></button>
@@ -105,6 +106,7 @@
           <label class="linea"><input type="checkbox" id="h-catalogo"> Consultar precios del catálogo</label>
           <label class="linea"><input type="checkbox" id="h-pedidos"> Tomar pedidos</label>
           <label class="linea"><input type="checkbox" id="h-reservas"> Agendar turnos</label>
+          <label class="linea"><input type="checkbox" id="h-cobros"> Enviar QR de pago</label>
           <label class="linea"><input type="checkbox" id="n-audios"> Escuchar notas de voz</label>
           <p class="nota">Tomar pedidos necesita el catálogo cargado: el bot solo anota productos que existen.</p>
         </fieldset>
@@ -198,6 +200,29 @@
 
       <h2>Turnos agendados</h2>
       <div id="lista-reservas" class="lista"></div>
+    </section>
+
+    <!-- ─── PAGOS ───────────────────────────────────────────────────── -->
+    <section id="tab-pagos" class="panel oculto"><header class="titulo"><div><h1>Pagos</h1><p class="nota">Comprobantes que mandaron los clientes. Vos aceptás; el bot nunca da un pago por bueno.</p></div></header>
+
+      <div class="tarjeta ancha">
+        <h2>Tu QR de cobro</h2>
+        <p class="nota" id="qr-aviso"></p>
+        <div class="qr-caja">
+          <img id="qr-actual" alt="QR de cobro" class="oculto">
+          <div>
+            <input type="file" id="qr-archivo" accept="image/*">
+            <p class="nota">Exportá el QR desde tu app del banco y subí esa imagen.</p>
+            <span id="qr-estado" class="estado"></span>
+          </div>
+        </div>
+        <label>Qué decirle al cliente junto con el QR
+          <textarea id="qr-instrucciones" rows="3" placeholder="Titular: Juan Pérez — Banco Ganadero. Mandanos la captura cuando termines."></textarea></label>
+        <button id="btn-guardar-cobros" type="button">Guardar</button>
+      </div>
+
+      <h2>Comprobantes</h2>
+      <div id="lista-pagos" class="lista"></div>
     </section>
 
     <!-- ─── CLIENTES ────────────────────────────────────────────────── -->

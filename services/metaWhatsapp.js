@@ -113,6 +113,17 @@ async function enviarLista(phoneNumberId, destino, textoBody, textoBoton, filas)
   });
 }
 
+// Manda una imagen por URL. Meta la descarga de ahí, así que la URL tiene que
+// ser pública y HTTPS — por eso el QR se sirve desde nuestro propio dominio y
+// no se sube a Meta: subido vence a los 30 días y habría que resubirlo solo.
+async function enviarImagen(phoneNumberId, destino, url, pie) {
+  return mandar(phoneNumberId, {
+    to: destino,
+    type: "image",
+    image: { link: url, ...(pie ? { caption: pie.slice(0, 1024) } : {}) },
+  });
+}
+
 // La que usa el resto del código. Devuelve qué formato terminó usando, para
 // poder dejarlo en el log sin que el caller tenga que deducirlo.
 async function enviarConOpciones(phoneNumberId, destino, texto, opciones, textoBoton) {
@@ -166,4 +177,4 @@ function firmaValida(rawBody, cabeceraFirma) {
   return a.length === b.length && crypto.timingSafeEqual(a, b);
 }
 
-module.exports = { enviarTexto, enviarBotones, enviarLista, enviarConOpciones, limpiarOpciones, marcarLeido, firmaValida };
+module.exports = { enviarTexto, enviarImagen, enviarBotones, enviarLista, enviarConOpciones, limpiarOpciones, marcarLeido, firmaValida };

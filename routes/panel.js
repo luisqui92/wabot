@@ -2,7 +2,7 @@
 // de requireAuth y filtrado por req.sesion.negocioId: ningún endpoint acepta
 // un negocioId que venga del cliente, porque eso sería dejar que un negocio
 // lea o edite la base de conocimiento de otro.
-const { Negocio, Usuario, Documento, Fragmento, Cliente, Conversacion } = require("../db/models");
+const { Negocio, Usuario, Documento, Fragmento, Producto, Pedido, Cliente, Conversacion } = require("../db/models");
 const { verificarPassword, generarToken, requireAuth } = require("../services/auth");
 const { asyncRoute, ErrorHttp, obtenerOFallar } = require("../services/httpHelpers");
 const { fragmentar, armarContexto } = require("../services/baseConocimiento");
@@ -46,6 +46,12 @@ module.exports = function (app) {
     const cambios = {};
     for (const campo of permitidos) {
       if (req.body[campo] !== undefined) cambios[campo] = req.body[campo];
+    }
+    // herramientas va aparte: es un objeto anidado, y un $set directo del body
+    // dejaría entrar cualquier clave inventada al documento.
+    if (req.body.herramientas) {
+      cambios["herramientas.catalogo"] = !!req.body.herramientas.catalogo;
+      cambios["herramientas.pedidos"] = !!req.body.herramientas.pedidos;
     }
     // phoneNumberId no está en la lista a propósito: cambiarlo desde el panel
     // desconecta el bot de su número sin que nadie se entere hasta que un
@@ -130,6 +136,95 @@ module.exports = function (app) {
     const f = await obtenerOFallar(Fragmento, { _id: req.params.id, negocioId: req.sesion.negocioId }, "Fragmento no encontrado");
     await f.deleteOne();
     res.json({ ok: true });
+  }));
+
+  // ─── CATÁLOGO ────────────────────────────────────────────────────────────
+  // Los precios entran y salen en la unidad de la moneda (12.50) pero se
+  // guardan en centavos enteros. La conversión vive acá y en un solo lugar:
+  // si cada endpoint la hiciera por su cuenta, tarde o temprano uno redondea
+  // distinto y un precio queda mal por un centavo.
+  const aCentavos = (v) => Math.round(parseFloat(String(v).replace(",", ".")) * 100) || 0;
+  const conPrecio = (p) => ({ ...p, precio: (p.precioCentavos / 100).toFixed(2) });
+
+  app.get("/api/productos", auth, asyncRoute(async (req, res) => {
+    const productos = await Producto.find({ negocioId: req.sesion.negocioId }).sort({ categoria: 1, nombre: 1 }).lean();
+    res.json(productos.map(conPrecio));
+  }));
+
+  app.post("/api/productos", auth, asyncRoute(async (req, res) => {
+    const nombre = String(req.body?.nombre || "").trim();
+    if (!nombre) throw new ErrorHttp(400, "El producto necesita un nombre");
+    const p = await Producto.create({
+      negocioId: req.sesion.negocioId,
+      nombre,
+      descripcion: String(req.body?.descripcion || "").trim(),
+      categoria: String(req.body?.categoria || "").trim(),
+      precioCentavos: aCentavos(req.body?.precio),
+      moneda: String(req.body?.moneda || "BOB").trim().toUpperCase().slice(0, 4),
+    });
+    res.status(201).json(conPrecio(p.toObject()));
+  }));
+
+  app.put("/api/productos/:id", auth, asyncRoute(async (req, res) => {
+    const p = await obtenerOFallar(Producto, { _id: req.params.id, negocioId: req.sesion.negocioId }, "Producto no encontrado");
+    if (req.body.nombre !== undefined) p.nombre = String(req.body.nombre).trim();
+    if (req.body.descripcion !== undefined) p.descripcion = String(req.body.descripcion).trim();
+    if (req.body.categoria !== undefined) p.categoria = String(req.body.categoria).trim();
+    if (req.body.precio !== undefined) p.precioCentavos = aCentavos(req.body.precio);
+    if (req.body.disponible !== undefined) p.disponible = !!req.body.disponible;
+    await p.save();
+    res.json(conPrecio(p.toObject()));
+  }));
+
+  app.delete("/api/productos/:id", auth, asyncRoute(async (req, res) => {
+    const p = await obtenerOFallar(Producto, { _id: req.params.id, negocioId: req.sesion.negocioId }, "Producto no encontrado");
+    await p.deleteOne();
+    res.json({ ok: true });
+  }));
+
+  // Carga masiva pegando desde una planilla. Es como una pyme tiene su lista
+  // de precios de verdad: en un Excel, no cargándola de a un producto por vez.
+  app.post("/api/productos/importar", auth, asyncRoute(async (req, res) => {
+    const texto = String(req.body?.texto || "").trim();
+    if (!texto) throw new ErrorHttp(400, "No hay nada que importar");
+
+    const filas = texto.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+    const nuevos = [];
+    const ignoradas = [];
+    for (const fila of filas) {
+      // Tabulación (lo que sale al copiar de Excel), punto y coma o coma.
+      const campos = fila.split(/\t|;|,(?=(?:[^"]*"[^"]*")*[^"]*$)/).map(c => c.trim().replace(/^"|"$/g, ""));
+      const [nombre, precio, categoria, descripcion] = campos;
+      if (!nombre || campos.length < 2) { ignoradas.push(fila.slice(0, 40)); continue; }
+      nuevos.push({
+        negocioId: req.sesion.negocioId,
+        nombre, categoria: categoria || "", descripcion: descripcion || "",
+        precioCentavos: aCentavos(precio),
+      });
+    }
+    if (!nuevos.length) throw new ErrorHttp(400, "Ninguna fila tenía el formato: nombre, precio, categoría, descripción");
+    await Producto.insertMany(nuevos);
+    res.status(201).json({ importados: nuevos.length, ignoradas });
+  }));
+
+  // ─── PEDIDOS ─────────────────────────────────────────────────────────────
+  app.get("/api/pedidos", auth, asyncRoute(async (req, res) => {
+    const filtro = { negocioId: req.sesion.negocioId };
+    if (req.query.estado) filtro.estado = req.query.estado;
+    const pedidos = await Pedido.find(filtro).sort({ creadoEn: -1 }).limit(200).lean();
+    res.json(pedidos.map(p => ({ ...p, total: (p.totalCentavos / 100).toFixed(2) })));
+  }));
+
+  app.put("/api/pedidos/:id", auth, asyncRoute(async (req, res) => {
+    const pedido = await obtenerOFallar(Pedido, { _id: req.params.id, negocioId: req.sesion.negocioId }, "Pedido no encontrado");
+    const estados = ["nuevo", "confirmado", "entregado", "cancelado"];
+    if (req.body.estado !== undefined) {
+      if (!estados.includes(req.body.estado)) throw new ErrorHttp(400, `Estado inválido. Válidos: ${estados.join(", ")}`);
+      pedido.estado = req.body.estado;
+    }
+    if (req.body.notas !== undefined) pedido.notas = String(req.body.notas);
+    await pedido.save();
+    res.json(pedido);
   }));
 
   // ─── CLIENTES ────────────────────────────────────────────────────────────

@@ -40,6 +40,16 @@ const negocioSchema = new mongoose.Schema({
   numeroEscalamiento: { type: String, default: "" },
 
   activo: { type: Boolean, default: true },
+
+  // Qué herramientas puede usar el bot en este negocio. Se apagan por
+  // separado porque un negocio puede querer que consulte precios pero NO que
+  // tome pedidos — y encender una herramienta que el dueño no esperaba es la
+  // forma más rápida de que el bot haga algo que nadie pidió.
+  herramientas: {
+    catalogo: { type: Boolean, default: true },
+    pedidos: { type: Boolean, default: false },
+  },
+
   creadoEn: { type: Date, default: Date.now },
 });
 const Negocio = mongoose.model("Negocio", negocioSchema);
@@ -99,6 +109,57 @@ const fragmentoSchema = new mongoose.Schema({
   creadoEn: { type: Date, default: Date.now },
 });
 const Fragmento = mongoose.model("Fragmento", fragmentoSchema);
+
+// ─── PRODUCTO ───────────────────────────────────────────────────────────────
+// El catálogo, estructurado. Antes los precios vivían dentro de fragmentos de
+// texto: el bot los leía, pero no podía filtrar por disponibilidad, y cambiar
+// un precio obligaba a reescribir el documento entero. Con esto, el precio es
+// un dato — se edita en un campo y el bot lo lee al instante.
+const productoSchema = new mongoose.Schema({
+  negocioId: { type: mongoose.Schema.Types.ObjectId, ref: "Negocio", required: true, index: true },
+  nombre: { type: String, required: true },
+  descripcion: { type: String, default: "" },
+
+  // En centavos y como entero: 0.1 + 0.2 no da 0.3 en coma flotante, y un
+  // redondeo en un precio es una discusión con un cliente.
+  precioCentavos: { type: Number, default: 0 },
+  moneda: { type: String, default: "BOB" },
+
+  categoria: { type: String, default: "", index: true },
+  // Cuando está en false el bot deja de ofrecerlo, pero no se pierde el
+  // producto ni su historial de pedidos.
+  disponible: { type: Boolean, default: true },
+  creadoEn: { type: Date, default: Date.now },
+});
+productoSchema.index({ negocioId: 1, nombre: "text", descripcion: "text", categoria: "text" });
+const Producto = mongoose.model("Producto", productoSchema);
+
+// ─── PEDIDO ─────────────────────────────────────────────────────────────────
+// Lo que el bot anotó. No es un sistema de ventas: es la libreta donde queda
+// lo que el cliente pidió, para que una persona lo atienda sabiendo qué
+// quiere. Confirmarlo, cobrarlo y despacharlo sigue siendo trabajo humano.
+const itemPedidoSchema = new mongoose.Schema({
+  productoId: { type: mongoose.Schema.Types.ObjectId, ref: "Producto", default: null },
+  // El nombre y el precio se copian al pedido a propósito: si mañana cambia
+  // el precio del producto, este pedido tiene que seguir diciendo lo que se
+  // le cotizó al cliente ese día.
+  nombre: { type: String, required: true },
+  cantidad: { type: Number, default: 1, min: 1 },
+  precioCentavos: { type: Number, default: 0 },
+}, { _id: false });
+
+const pedidoSchema = new mongoose.Schema({
+  negocioId: { type: mongoose.Schema.Types.ObjectId, ref: "Negocio", required: true, index: true },
+  clienteId: { type: mongoose.Schema.Types.ObjectId, ref: "Cliente", default: null, index: true },
+  numero: { type: String, required: true },
+  items: { type: [itemPedidoSchema], default: [] },
+  totalCentavos: { type: Number, default: 0 },
+  moneda: { type: String, default: "BOB" },
+  notas: { type: String, default: "" },
+  estado: { type: String, enum: ["nuevo", "confirmado", "entregado", "cancelado"], default: "nuevo", index: true },
+  creadoEn: { type: Date, default: Date.now, index: true },
+});
+const Pedido = mongoose.model("Pedido", pedidoSchema);
 
 // ─── CLIENTE ────────────────────────────────────────────────────────────────
 // Quién es la persona, separado de lo que dijo. Va en su propia colección y no
@@ -168,4 +229,4 @@ const conversacionSchema = new mongoose.Schema({
 conversacionSchema.index({ negocioId: 1, numero: 1 }, { unique: true });
 const Conversacion = mongoose.model("Conversacion", conversacionSchema);
 
-module.exports = { Negocio, Usuario, Documento, Fragmento, Cliente, Conversacion };
+module.exports = { Negocio, Usuario, Documento, Fragmento, Producto, Pedido, Cliente, Conversacion };

@@ -11,6 +11,7 @@
 const axios = require("axios");
 const { CONFIG, log } = require("../config");
 const { armarContexto } = require("./baseConocimiento");
+const { definicionesPara, ejecutar } = require("./herramientas");
 
 function promptSistema(negocio) {
   return `Sos el asistente de WhatsApp de "${negocio.nombre}".
@@ -38,6 +39,10 @@ Reglas, en orden de importancia:
    a entender que hay una ficha: eso incomoda a cualquiera.
 6. Lo que dice la ficha es tan poco inventable como lo demás: si no está ahí,
    no lo sabés.
+7. Si tenés herramientas disponibles, usalas en vez de responder de memoria.
+   Un precio o una disponibilidad SIEMPRE se consultan — la INFORMACIÓN DEL
+   NEGOCIO puede estar desactualizada, el catálogo no. Y nunca le digas al
+   cliente que "estás consultando el sistema": hacelo y contestá.
 ${negocio.instrucciones ? `\nInstrucciones propias del negocio (tienen prioridad sobre el tono, nunca sobre la regla 1):\n${negocio.instrucciones}` : ""}
 
 RESPONDÉ SOLO JSON, sin texto alrededor:
@@ -51,7 +56,11 @@ avisando que lo confirmás en un momento.`;
 // historial: [{rol: "cliente"|"bot"|"humano", texto}], del mas viejo al mas nuevo.
 // contextoCliente: el bloque de services/cliente.js, o null si no hay nada que
 // aportar sobre quien escribe.
-async function responder(negocio, mensaje, historial = [], contextoCliente = null) {
+// contextoHerramientas: {numero, clienteId, phoneNumberId} — lo que una
+// herramienta necesita para saber A QUIÉN le está registrando algo. No viaja
+// por los argumentos del modelo a propósito: eso lo decide el servidor, no un
+// texto que escribió un desconocido.
+async function responder(negocio, mensaje, historial = [], contextoCliente = null, contextoHerramientas = {}) {
   const contexto = await armarContexto(negocio._id);
   if (contexto.recortados > 0) {
     // Señal temprana de que la base ya no entra en el prompt: hay info
@@ -79,17 +88,56 @@ async function responder(negocio, mensaje, historial = [], contextoCliente = nul
     { role: "user", content: mensaje },
   ];
 
-  const res = await axios.post(
-    `${CONFIG.OPENAI_BASE_URL}/chat/completions`,
-    {
-      model: CONFIG.OPENAI_MODELO,
-      messages: mensajes,
-      max_tokens: 500,
-      temperature: 0.3,
-      response_format: { type: "json_object" },
-    },
-    { headers: { Authorization: `Bearer ${CONFIG.OPENAI_KEY}` }, timeout: CONFIG.TIMEOUT_OPENAI }
-  );
+  // ─── BUCLE DE HERRAMIENTAS ───────────────────────────────────────────────
+  // Acotado a propósito: cada vuelta es una llamada al modelo que se paga y
+  // que el cliente espera. Dos alcanzan para "buscar el producto y contestar"
+  // o "buscar y registrar el pedido"; más vueltas casi siempre son el modelo
+  // dando vueltas en círculo, y sin tope una conversación puede costar diez
+  // veces lo previsto sin que nadie se entere hasta la factura.
+  const herramientas = definicionesPara(negocio);
+  const MAX_VUELTAS = herramientas ? 3 : 1;
+
+  let res;
+  for (let vuelta = 0; vuelta < MAX_VUELTAS; vuelta++) {
+    const ultimaVuelta = vuelta === MAX_VUELTAS - 1;
+
+    res = await axios.post(
+      `${CONFIG.OPENAI_BASE_URL}/chat/completions`,
+      {
+        model: CONFIG.OPENAI_MODELO,
+        messages: mensajes,
+        max_tokens: 700,
+        temperature: 0.3,
+        // En la última vuelta se sacan las herramientas y se exige JSON: si no,
+        // el modelo puede terminar el presupuesto de vueltas pidiendo otra
+        // herramienta y quedarnos sin respuesta para el cliente.
+        ...(ultimaVuelta
+          ? { response_format: { type: "json_object" } }
+          : { tools: herramientas, tool_choice: "auto" }),
+      },
+      { headers: { Authorization: `Bearer ${CONFIG.OPENAI_KEY}` }, timeout: CONFIG.TIMEOUT_OPENAI }
+    );
+
+    const mensaje = res.data.choices[0].message;
+    if (!mensaje.tool_calls?.length) break;
+
+    // El mensaje del asistente con las llamadas tiene que quedar en el
+    // historial antes de los resultados: la API rechaza un rol "tool" que no
+    // responda a un tool_call previo.
+    mensajes.push(mensaje);
+
+    for (const llamada of mensaje.tool_calls) {
+      let args = {};
+      try {
+        args = JSON.parse(llamada.function.arguments || "{}");
+      } catch {
+        log.error("[IA] Argumentos de herramienta no parseables:", llamada.function.arguments?.slice(0, 200));
+      }
+      const resultado = await ejecutar(negocio, llamada.function.name, args, contextoHerramientas);
+      log.info(`[IA] herramienta ${llamada.function.name} → ${String(resultado).slice(0, 80).replace(/\n/g, " ")}…`);
+      mensajes.push({ role: "tool", tool_call_id: llamada.id, content: String(resultado) });
+    }
+  }
 
   const crudo = res.data.choices[0].message.content;
   try {

@@ -73,7 +73,8 @@ async function procesarMensajeEntrante({ phoneNumberId, numero, texto, nombrePer
 
   let salida;
   try {
-    salida = await responder(negocio, texto, historial, armarContexto(cliente));
+    salida = await responder(negocio, texto, historial, armarContexto(cliente),
+      { numero, clienteId: cliente._id, phoneNumberId });
   } catch (e) {
     log.error("[CONV] Falló la IA:", e.response?.data?.error?.message || e.message);
     // Caer en silencio deja al cliente esperando sin saber que pasó. Se

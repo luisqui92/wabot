@@ -72,6 +72,8 @@ function entrar() {
 const CARGADORES = {
   bot: cargarNegocio,
   conocimiento: cargarConocimiento,
+  catalogo: cargarCatalogo,
+  pedidos: cargarPedidos,
   clientes: cargarClientes,
   conversaciones: cargarConversaciones,
   huecos: cargarHuecos,
@@ -104,6 +106,8 @@ async function cargarNegocio() {
   $("#n-mensajeSinInfo").value = n.mensajeSinInfo || "";
   $("#n-numeroEscalamiento").value = n.numeroEscalamiento || "";
   $("#n-activo").checked = !!n.activo;
+  $("#h-catalogo").checked = !!n.herramientas?.catalogo;
+  $("#h-pedidos").checked = !!n.herramientas?.pedidos;
 
   // El aviso importa: significa que hay información cargada que el bot NO
   // está leyendo, y el síntoma visible sería que diga "no sé" sobre algo que
@@ -129,6 +133,7 @@ $("#form-negocio").addEventListener("submit", async (e) => {
         mensajeSinInfo: $("#n-mensajeSinInfo").value,
         numeroEscalamiento: $("#n-numeroEscalamiento").value.replace(/[^0-9]/g, ""),
         activo: $("#n-activo").checked,
+        herramientas: { catalogo: $("#h-catalogo").checked, pedidos: $("#h-pedidos").checked },
       }),
     });
     $("#negocio-estado").textContent = "Guardado ✓";
@@ -205,6 +210,98 @@ async function cargarConocimiento() {
     fila.append(toggle);
     item.append(fila, el("p", null, f.texto));
     cc.append(item);
+  }
+}
+
+// ─── CATÁLOGO ───────────────────────────────────────────────────────────────
+$("#form-producto").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  try {
+    await api("/productos", { method: "POST", body: JSON.stringify({
+      nombre: $("#p-nombre").value, precio: $("#p-precio").value,
+      categoria: $("#p-categoria").value, descripcion: $("#p-descripcion").value,
+    }) });
+    $("#form-producto").reset();
+    $("#producto-estado").textContent = "Agregado ✓";
+    setTimeout(() => { $("#producto-estado").textContent = ""; }, 2000);
+    await cargarCatalogo();
+  } catch (err) { mostrarError(err); }
+});
+
+$("#btn-importar").addEventListener("click", async () => {
+  try {
+    const r = await api("/productos/importar", { method: "POST", body: JSON.stringify({ texto: $("#p-importar").value }) });
+    $("#importar-estado").textContent = `${r.importados} importados${r.ignoradas.length ? `, ${r.ignoradas.length} filas ignoradas` : ""} ✓`;
+    $("#p-importar").value = "";
+    await cargarCatalogo();
+  } catch (err) { mostrarError(err); }
+});
+
+async function cargarCatalogo() {
+  const productos = await api("/productos");
+  const cont = $("#lista-productos");
+  cont.replaceChildren();
+  if (!productos.length) {
+    cont.append(el("p", "nota", "Catálogo vacío. Sin productos, el bot no puede consultar precios ni tomar pedidos."));
+    return;
+  }
+  for (const p of productos) {
+    const item = el("div", `item${p.disponible ? "" : " agotado"}`);
+    const fila = el("div", "fila");
+    const izq = el("div");
+    izq.append(el("h3", null, p.nombre));
+    if (p.categoria || p.descripcion) izq.append(el("p", "meta", [p.categoria, p.descripcion].filter(Boolean).join(" · ")));
+    fila.append(izq);
+    fila.append(el("span", "precio", `${p.moneda} ${p.precio}`));
+
+    const toggle = el("button", "sutil", p.disponible ? "Marcar agotado" : "Marcar disponible");
+    toggle.addEventListener("click", async () => {
+      try { await api(`/productos/${p._id}`, { method: "PUT", body: JSON.stringify({ disponible: !p.disponible }) }); await cargarCatalogo(); }
+      catch (err) { mostrarError(err); }
+    });
+    const borrar = el("button", "peligro", "Borrar");
+    borrar.addEventListener("click", async () => {
+      if (!confirm(`¿Borrar "${p.nombre}"?`)) return;
+      try { await api(`/productos/${p._id}`, { method: "DELETE" }); await cargarCatalogo(); }
+      catch (err) { mostrarError(err); }
+    });
+    fila.append(toggle, borrar);
+    item.append(fila);
+    cont.append(item);
+  }
+}
+
+// ─── PEDIDOS ────────────────────────────────────────────────────────────────
+const ETIQUETA_ESTADO = { nuevo: "🆕 Nuevo", confirmado: "✅ Confirmado", entregado: "📦 Entregado", cancelado: "✖ Cancelado" };
+
+async function cargarPedidos() {
+  const pedidos = await api("/pedidos");
+  const cont = $("#lista-pedidos");
+  cont.replaceChildren();
+  if (!pedidos.length) { cont.append(el("p", "nota", "Ningún pedido todavía.")); return; }
+
+  for (const p of pedidos) {
+    const item = el("div", "item");
+    const fila = el("div", "fila");
+    fila.append(el("h3", null, `${p.moneda} ${p.total}`));
+    fila.append(el("span", "badge", ETIQUETA_ESTADO[p.estado] || p.estado));
+    item.append(fila);
+    item.append(el("p", null, p.items.map(i => `${i.cantidad}x ${i.nombre}`).join(", ")));
+    item.append(el("p", "meta", `${p.numero} · ${new Date(p.creadoEn).toLocaleString("es-BO", { dateStyle: "short", timeStyle: "short" })}`));
+    if (p.notas) item.append(el("p", "meta", `Notas: ${p.notas}`));
+
+    const estados = el("div", "estados");
+    for (const e of ["confirmado", "entregado", "cancelado"]) {
+      if (e === p.estado) continue;
+      const b = el("button", e === "cancelado" ? "peligro" : "sutil", ETIQUETA_ESTADO[e]);
+      b.addEventListener("click", async () => {
+        try { await api(`/pedidos/${p._id}`, { method: "PUT", body: JSON.stringify({ estado: e }) }); await cargarPedidos(); }
+        catch (err) { mostrarError(err); }
+      });
+      estados.append(b);
+    }
+    item.append(estados);
+    cont.append(item);
   }
 }
 

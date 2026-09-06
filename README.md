@@ -168,13 +168,16 @@ URL ya armada con el prefijo — copiala de ahí en vez de escribirla a mano.
 
 ```
 config/index.js            CONFIG, logger, validación al arrancar
-db/models.js               Negocio, Usuario, Documento, Fragmento, Cliente, Conversacion
+db/models.js               Negocio, Usuario, Documento, Fragmento, Producto,
+                           Pedido, Cliente, Conversacion
 services/
   metaWhatsapp.js          envío por la Graph API + verificación de firma
   asistenteIA.js           el prompt y la llamada al modelo
   baseConocimiento.js      fragmentado y armado del contexto
   conversacion.js          orquestación de un mensaje entrante
   cliente.js               memoria: quién es cada persona y su ficha
+  herramientas.js          lo que el bot PUEDE HACER — el único archivo a
+                           tocar para agregar una acción nueva
   auth.js                  bcrypt + token firmado para el panel
   httpHelpers.js           asyncRoute, ErrorHttp, aislamiento por negocio
 routes/
@@ -186,6 +189,16 @@ scripts/cambiar_numero.js  corrige el phoneNumberId de Meta de un negocio
 scripts/respaldo.js        copia diaria cifrada, verificada restaurándola
 scripts/restaurar.js       restaura un respaldo
 ```
+
+## Acciones
+
+El bot no solo responde: consulta el catálogo y anota pedidos. Las acciones se
+declaran en un solo archivo (`services/herramientas.js`) y el orquestador no
+sabe cuáles existen — pide la lista, se la pasa al modelo y ejecuta la que
+pida. Agregar `crear_reserva` mañana es sumar una entrada ahí y nada más.
+
+Cada negocio enciende las suyas desde la pestaña **Bot**: un negocio puede
+querer que consulte precios pero no que tome pedidos.
 
 ## Respaldos
 

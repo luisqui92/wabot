@@ -27,6 +27,8 @@
     <nav>
       <button data-tab="bot" class="tab activa">Bot</button>
       <button data-tab="conocimiento" class="tab">Conocimiento</button>
+      <button data-tab="catalogo" class="tab">Catálogo</button>
+      <button data-tab="pedidos" class="tab">Pedidos</button>
       <button data-tab="clientes" class="tab">Clientes</button>
       <button data-tab="conversaciones" class="tab">Conversaciones</button>
       <button data-tab="huecos" class="tab">Huecos</button>
@@ -49,6 +51,12 @@
         <label>Avisar a este número cuando el bot no sepa (opcional, formato 59176543210)
           <input id="n-numeroEscalamiento"></label>
         <label class="linea"><input type="checkbox" id="n-activo"> Bot activo</label>
+        <fieldset class="herramientas">
+          <legend>Qué puede hacer el bot</legend>
+          <label class="linea"><input type="checkbox" id="h-catalogo"> Consultar precios del catálogo</label>
+          <label class="linea"><input type="checkbox" id="h-pedidos"> Tomar pedidos</label>
+          <p class="nota">Tomar pedidos necesita el catálogo cargado: el bot solo anota productos que existen.</p>
+        </fieldset>
         <button type="submit">Guardar</button>
         <span id="negocio-estado" class="estado"></span>
       </form>
@@ -72,6 +80,36 @@
       <h2>Correcciones sueltas</h2>
       <p class="nota">Datos que agregaste a mano, normalmente desde una conversación en la que el bot falló.</p>
       <div id="lista-correcciones" class="lista"></div>
+    </section>
+
+    <!-- ─── CATÁLOGO ────────────────────────────────────────────────── -->
+    <section id="tab-catalogo" class="panel oculto">
+      <form id="form-producto" class="tarjeta ancha">
+        <h2>Agregar producto o servicio</h2>
+        <label>Nombre <input id="p-nombre" required></label>
+        <label>Precio <input id="p-precio" placeholder="45.00"></label>
+        <label>Categoría <input id="p-categoria" placeholder="Pizzas, Cortes, Servicios…"></label>
+        <label>Descripción <input id="p-descripcion"></label>
+        <button type="submit">Agregar</button>
+        <span id="producto-estado" class="estado"></span>
+      </form>
+
+      <details class="tarjeta ancha">
+        <summary>Importar desde una planilla</summary>
+        <p class="nota">Copiá las filas desde Excel y pegalas acá. Una por línea: <code>nombre, precio, categoría, descripción</code></p>
+        <textarea id="p-importar" rows="6" placeholder="Pizza grande	45	Pizzas	Muzzarella&#10;Pizza chica	30	Pizzas"></textarea>
+        <button id="btn-importar" type="button">Importar</button>
+        <span id="importar-estado" class="estado"></span>
+      </details>
+
+      <h2>Catálogo</h2>
+      <div id="lista-productos" class="lista"></div>
+    </section>
+
+    <!-- ─── PEDIDOS ─────────────────────────────────────────────────── -->
+    <section id="tab-pedidos" class="panel oculto">
+      <p class="nota">Lo que el bot anotó. Confirmarlo, cobrarlo y entregarlo sigue siendo trabajo tuyo.</p>
+      <div id="lista-pedidos" class="lista"></div>
     </section>
 
     <!-- ─── CLIENTES ────────────────────────────────────────────────── -->

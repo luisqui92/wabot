@@ -192,16 +192,15 @@ pagar una llamada por cada línea ni hacer esperar al cliente.
 Pendiente encima de esto: que la ficha alimente el lead scoring, y agregar por
 rubro lo que revelan las fichas (ver el foso del punto 3).
 
-### Módulo 2 — Acciones (tools)
-Que el bot **haga** en vez de explicar cómo hacer. `consultar_precio()`,
-`crear_reserva()`, `consultar_stock()`.
+### Módulo 2 — Acciones (tools) ✅ HECHO
+Registro de herramientas en `services/herramientas.js`, bucle de *function
+calling* acotado a 3 vueltas, y las dos primeras acciones: **consultar el
+catálogo** y **anotar un pedido**. Con catálogo estructurado —los precios son
+un dato editable, no texto enterrado en un documento— e importación pegando
+desde una planilla.
 
-Es el salto de calidad más grande del roadmap: la diferencia entre "podés
-reservar llamando al…" y una reserva hecha. Técnicamente es *function calling*
-sobre lo que ya existe.
-
-**Acá está el verdadero punto de modularidad**: un registro de herramientas
-donde cada una se agrega sin tocar el orquestador.
+Encima de esto se construyen las siguientes sin tocar el orquestador:
+`crear_reserva`, `consultar_stock`, `generar_pago`.
 
 ### Módulo 3 — Métricas y costo por conversación
 Cuánto cuesta cada conversación (tokens + mensajes de Meta), cuántas se

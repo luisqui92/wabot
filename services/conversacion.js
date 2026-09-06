@@ -5,7 +5,7 @@
 const { CONFIG, log } = require("../config");
 const { Negocio, Conversacion } = require("../db/models");
 const { responder } = require("./asistenteIA");
-const { enviarTexto } = require("./metaWhatsapp");
+const { enviarTexto, enviarConOpciones } = require("./metaWhatsapp");
 const { obtenerOCrear, armarContexto, refrescarResumenSiCorresponde } = require("./cliente");
 const { descargarMedia, transcribir, vocabularioDe } = require("./audio");
 
@@ -123,8 +123,15 @@ async function procesarMensajeEntrante({ phoneNumberId, numero, texto, nombrePer
   }
 
   await agregarMensaje(conversacion, { rol: "bot", texto: salida.respuesta, sinRespuesta: salida.noSe });
-  await enviarTexto(phoneNumberId, numero, salida.respuesta);
-  log.info(`[CONV] ${numero} <- respondido${salida.noSe ? " (SIN INFO: falta cargar esto en la base)" : ""}`);
+
+  // Un mensaje con opciones para tocar, o texto plano. Lo decide
+  // enviarConOpciones según cuántas opciones haya: no es una decisión que
+  // deba tomar quien orquesta la conversación.
+  const formato = salida.opciones?.length
+    ? await enviarConOpciones(phoneNumberId, numero, salida.respuesta, salida.opciones, salida.tituloOpciones)
+    : (await enviarTexto(phoneNumberId, numero, salida.respuesta), "texto");
+
+  log.info(`[CONV] ${numero} <- respondido en ${formato}${salida.noSe ? " (SIN INFO: falta cargar esto en la base)" : ""}`);
 
   // Después de responder, nunca antes: la ficha es nuestra, la espera es del
   // cliente. Si esto falla o tarda, la conversación ya terminó bien.

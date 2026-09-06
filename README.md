@@ -171,7 +171,7 @@ config/index.js            CONFIG, logger, validación al arrancar
 db/models.js               Negocio, Usuario, Documento, Fragmento, Producto,
                            Pedido, Reserva, Cliente, Conversacion
 services/
-  metaWhatsapp.js          envío por la Graph API + verificación de firma
+  metaWhatsapp.js          envío por la Graph API, botones/listas, firma
   asistenteIA.js           el prompt y la llamada al modelo
   baseConocimiento.js      fragmentado y armado del contexto
   conversacion.js          orquestación de un mensaje entrante
@@ -195,6 +195,19 @@ scripts/cambiar_numero.js  corrige el phoneNumberId de Meta de un negocio
 scripts/respaldo.js        copia diaria cifrada, verificada restaurándola
 scripts/restaurar.js       restaura un respaldo
 ```
+
+## Botones
+
+El bot puede ofrecer opciones para tocar en vez de escribir. Lo decide el
+modelo, con una regla estricta: **solo cuando la elección es un conjunto
+cerrado** —horarios libres, confirmar o cancelar— nunca como menú de "¿en qué
+te ayudo?". Un bot que contesta todo con botones se siente un contestador
+telefónico, que es lo contrario de lo que se busca.
+
+El modelo solo dice qué opciones hay; si van como botones (hasta 3) o como
+lista (hasta 10), y los recortes de longitud que exige Meta, los resuelve
+`services/metaWhatsapp.js`. La respuesta siempre tiene sentido sin los
+botones, porque muchos clientes escriben igual.
 
 ## Agenda
 

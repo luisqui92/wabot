@@ -57,7 +57,30 @@ async function enviarTexto(phoneNumberId, destino, texto) {
   return ultima;
 }
 
-// Hasta 3 botones. Limite de Meta: titulo de 20 caracteres — se recorta acá
+// ─── MENSAJES CON OPCIONES ──────────────────────────────────────────────────
+// Meta tiene dos formatos y cada uno con sus límites. En vez de que el resto
+// del código tenga que conocerlos, se expone UNA función que recibe opciones y
+// elige sola: hasta 3 son botones, de 4 a 10 una lista. Así el modelo nunca
+// tiene que saber de interfaces de WhatsApp, solo qué opciones ofrecer.
+const LIMITE_CUERPO = 1024;     // texto del mensaje interactivo
+const MAX_BOTONES = 3;
+const MAX_FILAS = 10;
+
+function limpiarOpciones(opciones) {
+  const vistos = new Set();
+  return (Array.isArray(opciones) ? opciones : [])
+    .map(o => ({
+      id: String(o?.id ?? o?.title ?? "").trim().slice(0, 200),
+      title: String(o?.title ?? "").trim(),
+      description: String(o?.descripcion ?? o?.description ?? "").trim(),
+    }))
+    // Sin título no se puede mostrar, y dos opciones con el mismo id hacen que
+    // Meta rechace el mensaje entero.
+    .filter(o => { if (!o.title || !o.id || vistos.has(o.id)) return false; vistos.add(o.id); return true; })
+    .slice(0, MAX_FILAS);
+}
+
+// Hasta 3 botones. Límite de Meta: título de 20 caracteres — se recorta acá
 // para no depender de que cada caller lo respete.
 async function enviarBotones(phoneNumberId, destino, textoBody, botones) {
   return mandar(phoneNumberId, {
@@ -65,10 +88,57 @@ async function enviarBotones(phoneNumberId, destino, textoBody, botones) {
     type: "interactive",
     interactive: {
       type: "button",
-      body: { text: textoBody },
-      action: { buttons: botones.slice(0, 3).map(b => ({ type: "reply", reply: { id: b.id, title: b.title.slice(0, 20) } })) },
+      body: { text: textoBody.slice(0, LIMITE_CUERPO) },
+      action: { buttons: botones.slice(0, MAX_BOTONES).map(b => ({ type: "reply", reply: { id: b.id, title: b.title.slice(0, 20) } })) },
     },
   });
+}
+
+// Hasta 10 filas. Límites de Meta: título 24, descripción 72, y el botón que
+// abre la lista, 20.
+async function enviarLista(phoneNumberId, destino, textoBody, textoBoton, filas) {
+  return mandar(phoneNumberId, {
+    to: destino,
+    type: "interactive",
+    interactive: {
+      type: "list",
+      body: { text: textoBody.slice(0, LIMITE_CUERPO) },
+      action: {
+        button: (textoBoton || "Ver opciones").slice(0, 20),
+        sections: [{ rows: filas.slice(0, MAX_FILAS).map(f => ({
+          id: f.id, title: f.title.slice(0, 24), ...(f.description ? { description: f.description.slice(0, 72) } : {}),
+        })) }],
+      },
+    },
+  });
+}
+
+// La que usa el resto del código. Devuelve qué formato terminó usando, para
+// poder dejarlo en el log sin que el caller tenga que deducirlo.
+async function enviarConOpciones(phoneNumberId, destino, texto, opciones, textoBoton) {
+  const limpias = limpiarOpciones(opciones);
+
+  // Una sola opción no es una elección: mostrar un botón solitario es peor
+  // que no mostrar ninguno.
+  if (limpias.length < 2) {
+    await enviarTexto(phoneNumberId, destino, texto);
+    return "texto";
+  }
+
+  // Un mensaje interactivo no puede llevar más de 1024 caracteres de cuerpo, y
+  // recortar la respuesta para que entren los botones sería sacrificar lo que
+  // importa por el adorno. En ese caso van solo el texto y su respuesta larga.
+  if (texto.length > LIMITE_CUERPO) {
+    await enviarTexto(phoneNumberId, destino, texto);
+    return "texto (respuesta larga para un interactivo)";
+  }
+
+  if (limpias.length <= MAX_BOTONES) {
+    await enviarBotones(phoneNumberId, destino, texto, limpias);
+    return `${limpias.length} botones`;
+  }
+  await enviarLista(phoneNumberId, destino, texto, textoBoton, limpias);
+  return `lista de ${limpias.length}`;
 }
 
 // Marca el mensaje entrante como leido (el cliente ve el doble check azul).
@@ -96,4 +166,4 @@ function firmaValida(rawBody, cabeceraFirma) {
   return a.length === b.length && crypto.timingSafeEqual(a, b);
 }
 
-module.exports = { enviarTexto, enviarBotones, marcarLeido, firmaValida };
+module.exports = { enviarTexto, enviarBotones, enviarLista, enviarConOpciones, limpiarOpciones, marcarLeido, firmaValida };

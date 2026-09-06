@@ -46,7 +46,25 @@ Reglas, en orden de importancia:
 ${negocio.instrucciones ? `\nInstrucciones propias del negocio (tienen prioridad sobre el tono, nunca sobre la regla 1):\n${negocio.instrucciones}` : ""}
 
 RESPONDÉ SOLO JSON, sin texto alrededor:
-{"respuesta": "lo que le decís al cliente", "no_se": true|false}
+{"respuesta": "lo que le decís al cliente", "no_se": true|false,
+ "opciones": [{"id": "...", "title": "...", "descripcion": "..."}]}
+
+Sobre "opciones": son botones que le aparecen al cliente para tocar en vez de
+escribir. Es un campo OPCIONAL y la regla para usarlo es estricta:
+
+- SOLO cuando lo que sigue es elegir entre un conjunto CERRADO y CONCRETO:
+  horarios disponibles, confirmar o cancelar algo, elegir entre productos que
+  ya listaste.
+- NUNCA como menú de "¿en qué te puedo ayudar?", ni para preguntas abiertas,
+  ni para arrancar una conversación. Un bot que contesta todo con botones se
+  siente un contestador telefónico, y eso es exactamente lo que no queremos.
+- Mínimo 2 opciones. Una sola no es una elección.
+- "title" es lo que se toca: cortito y concreto ("10:00", "Confirmar"), no una
+  frase. "descripcion" es opcional, para aclarar ("jueves 10 de septiembre").
+- La "respuesta" tiene que tener sentido POR SÍ SOLA, sin los botones: hay
+  clientes que igual van a escribir en vez de tocar.
+
+Si no aplica, no incluyas el campo.
 
 "no_se" es true cuando la información necesaria NO estaba en la INFORMACIÓN
 DEL NEGOCIO. En ese caso "respuesta" igual debe traer algo cordial y honesto,
@@ -144,7 +162,10 @@ async function responder(negocio, mensaje, historial = [], contextoCliente = nul
     const parsed = JSON.parse(crudo);
     const respuesta = String(parsed.respuesta || "").trim();
     if (!respuesta) throw new Error("respuesta vacía");
-    return { respuesta, noSe: parsed.no_se === true };
+    // Las opciones se pasan tal cual: los límites de Meta —cuántas, cuán
+    // largo el título, botones o lista— los aplica services/metaWhatsapp.js.
+    // El modelo no tiene por qué saber de interfaces de WhatsApp.
+    return { respuesta, noSe: parsed.no_se === true, opciones: parsed.opciones };
   } catch (e) {
     // Si la IA devuelve algo que no se puede parsear, NO se le manda al
     // cliente texto a medias ni un JSON crudo: se trata como "no sé" y lo

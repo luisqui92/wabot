@@ -169,7 +169,7 @@ URL ya armada con el prefijo — copiala de ahí en vez de escribirla a mano.
 ```
 config/index.js            CONFIG, logger, validación al arrancar
 db/models.js               Negocio, Usuario, Documento, Fragmento, Producto,
-                           Pedido, Cliente, Conversacion
+                           Pedido, Reserva, Cliente, Conversacion
 services/
   metaWhatsapp.js          envío por la Graph API + verificación de firma
   asistenteIA.js           el prompt y la llamada al modelo
@@ -177,6 +177,8 @@ services/
   conversacion.js          orquestación de un mensaje entrante
   cliente.js               memoria: quién es cada persona y su ficha
   audio.js                 notas de voz: descarga de Meta y transcripción
+  googleCalendar.js        cuenta de servicio y REST de Calendar
+  agenda.js                turnos: horario x calendario x anticipación
   herramientas.js          lo que el bot PUEDE HACER — el único archivo a
                            tocar para agregar una acción nueva
   auth.js                  bcrypt + token firmado para el panel
@@ -190,6 +192,13 @@ scripts/cambiar_numero.js  corrige el phoneNumberId de Meta de un negocio
 scripts/respaldo.js        copia diaria cifrada, verificada restaurándola
 scripts/restaurar.js       restaura un respaldo
 ```
+
+## Agenda
+
+El bot consulta horarios libres, agenda y cancela contra el Google Calendar del
+negocio — ver [`AGENDA.md`](AGENDA.md). **Google es la fuente de verdad de la
+disponibilidad**: el dueño también agenda a mano desde su celular, y si no
+miráramos su calendario ofreceríamos horarios ya ocupados.
 
 ## Notas de voz
 

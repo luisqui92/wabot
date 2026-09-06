@@ -16,7 +16,8 @@
 // partir de lo que escribió un desconocido por WhatsApp — tratarlos como
 // confiables sería dejar que un cliente lea el catálogo de otro negocio.
 const { CONFIG, log } = require("../config");
-const { Producto, Pedido, Cliente } = require("../db/models");
+const { Producto, Pedido, Reserva } = require("../db/models");
+const { disponibilidad, reservar, cancelar, enZona, DIAS } = require("./agenda");
 const { enviarTexto } = require("./metaWhatsapp");
 
 function precio(centavos, moneda) {
@@ -160,6 +161,137 @@ const HERRAMIENTAS = [
       }
 
       return `Pedido registrado. Detalle: ${detalle}. Total: ${precio(totalCentavos, moneda)}. Confirmale al cliente el detalle y el total, y avisale que en breve lo contactan para coordinar.`;
+    },
+  },
+
+  // ─── RESERVAS ─────────────────────────────────────────────────────────────
+  {
+    nombre: "consultar_disponibilidad",
+    requiere: "reservas",
+    definicion: {
+      type: "function",
+      function: {
+        name: "consultar_disponibilidad",
+        description:
+          "Devuelve los horarios REALES que están libres en la agenda, mirando el calendario del negocio. " +
+          "Usala SIEMPRE antes de ofrecer un horario. Nunca inventes ni supongas disponibilidad.",
+        parameters: {
+          type: "object",
+          properties: {
+            desde: { type: "string", description: "Fecha desde la cual buscar, formato AAAA-MM-DD. Vacío = desde hoy." },
+            dias: { type: "integer", description: "Cuántos días mirar hacia adelante. Por defecto 7." },
+          },
+          required: [],
+        },
+      },
+    },
+    async ejecutar(negocio, args) {
+      const dias = Math.min(Math.max(parseInt(args?.dias, 10) || 7, 1), negocio.diasMaximosAdelante || 30);
+      const porDia = await disponibilidad(negocio, { desdeISO: args?.desde || null, dias });
+
+      if (!porDia.length) {
+        return "No hay ningún horario libre en ese rango. Ofrecé buscar más adelante o que lo contacte una persona.";
+      }
+      // Se limitan los horarios por día: una lista de veinte opciones por
+      // WhatsApp no la lee nadie, y encima gasta tokens en cada vuelta.
+      return porDia.slice(0, 7).map(d =>
+        `${d.diaNombre} ${d.fecha}: ${d.turnos.slice(0, 8).map(t => t.hora).join(", ")}${d.turnos.length > 8 ? " (y más)" : ""}`
+      ).join("\n");
+    },
+  },
+
+  {
+    nombre: "crear_reserva",
+    requiere: "reservas",
+    definicion: {
+      type: "function",
+      function: {
+        name: "crear_reserva",
+        description:
+          "Agenda el turno en el calendario del negocio. Usala SOLO cuando el cliente ya eligió un día y una hora " +
+          "que vos consultaste con consultar_disponibilidad, y te dio su nombre. Confirmá día, hora y nombre antes de llamarla.",
+        parameters: {
+          type: "object",
+          properties: {
+            fecha: { type: "string", description: "AAAA-MM-DD" },
+            hora: { type: "string", description: "HH:MM en 24 horas, exactamente uno de los horarios que devolvió consultar_disponibilidad" },
+            nombre: { type: "string", description: "Nombre de la persona que reserva" },
+            motivo: { type: "string", description: "Para qué es el turno, si lo dijo" },
+          },
+          required: ["fecha", "hora", "nombre"],
+        },
+      },
+    },
+    async ejecutar(negocio, args, contexto) {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(String(args?.fecha || ""))) return "La fecha tiene que ser AAAA-MM-DD.";
+      if (!/^\d{1,2}:\d{2}$/.test(String(args?.hora || ""))) return "La hora tiene que ser HH:MM.";
+
+      const hora = String(args.hora).padStart(5, "0");
+      const r = await reservar(negocio, {
+        fechaISO: args.fecha, hora,
+        nombre: String(args.nombre || "").trim(),
+        motivo: String(args.motivo || "").trim(),
+        numero: contexto?.numero || "",
+        clienteId: contexto?.clienteId || null,
+      });
+
+      if (!r.ok) {
+        // Se le devuelve el motivo en palabras para que vuelva a consultar
+        // disponibilidad y ofrezca otro horario, en vez de insistir con el
+        // mismo.
+        return `No se pudo reservar: ${r.motivo}. Volvé a consultar disponibilidad y ofrecele otro horario.`;
+      }
+
+      const zona = negocio.zonaHoraria || "America/La_Paz";
+      const { fecha, hora: h, diaSemana } = enZona(r.inicio, zona);
+      const detalle = `${DIAS[diaSemana]} ${fecha} a las ${h}`;
+
+      if (negocio.numeroEscalamiento) {
+        enviarTexto(contexto.phoneNumberId, negocio.numeroEscalamiento,
+          `📅 Turno nuevo: ${args.nombre} — ${detalle}${args.motivo ? `\n${args.motivo}` : ""}\n${contexto?.numero}`
+        ).catch(e => log.error("[AGENDA] No se pudo avisar:", e.message));
+      }
+
+      return `Turno agendado para ${detalle}. Confirmaselo al cliente con el día y la hora.`;
+    },
+  },
+
+  {
+    nombre: "cancelar_reserva",
+    requiere: "reservas",
+    definicion: {
+      type: "function",
+      function: {
+        name: "cancelar_reserva",
+        description:
+          "Cancela el próximo turno del cliente que está escribiendo. Usala solo si pide cancelar explícitamente. " +
+          "Confirmá con él cuál es el turno antes de cancelarlo.",
+        parameters: { type: "object", properties: {}, required: [] },
+      },
+    },
+    async ejecutar(negocio, args, contexto) {
+      // Solo puede cancelar SU turno: el número viene del webhook, no de los
+      // argumentos del modelo. Si viniera de los argumentos, bastaría con
+      // convencer al bot de que uno es otra persona.
+      const reserva = await Reserva.findOne({
+        negocioId: negocio._id,
+        numero: contexto?.numero,
+        estado: "confirmada",
+        inicio: { $gte: new Date() },
+      }).sort({ inicio: 1 });
+
+      if (!reserva) return "Este cliente no tiene ningún turno próximo agendado.";
+
+      const zona = negocio.zonaHoraria || "America/La_Paz";
+      const { fecha, hora, diaSemana } = enZona(reserva.inicio, zona);
+      await cancelar(negocio, reserva);
+
+      if (negocio.numeroEscalamiento) {
+        enviarTexto(contexto.phoneNumberId, negocio.numeroEscalamiento,
+          `❌ Turno cancelado: ${reserva.nombre || contexto?.numero} — ${DIAS[diaSemana]} ${fecha} ${hora}`
+        ).catch(() => {});
+      }
+      return `Turno del ${DIAS[diaSemana]} ${fecha} a las ${hora} cancelado. Confirmaselo al cliente.`;
     },
   },
 ];

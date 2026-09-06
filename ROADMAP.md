@@ -201,8 +201,13 @@ catálogo** y **anotar un pedido**. Con catálogo estructurado —los precios so
 un dato editable, no texto enterrado en un documento— e importación pegando
 desde una planilla.
 
-Encima de esto se construyen las siguientes sin tocar el orquestador:
-`crear_reserva`, `consultar_stock`, `generar_pago`.
+Encima de esto ya se construyeron las de agenda —`consultar_disponibilidad`,
+`crear_reserva`, `cancelar_reserva`— sin tocar el orquestador, que es la prueba
+de que la costura estaba bien puesta. Siguen la misma vía `consultar_stock` y
+`generar_pago`.
+
+### Módulo 2b — Agenda con Google Calendar ✅ HECHO
+Ver [`AGENDA.md`](AGENDA.md).
 
 ### Módulo 3 — Métricas y costo por conversación
 Cuánto cuesta cada conversación (tokens + mensajes de Meta), cuántas se

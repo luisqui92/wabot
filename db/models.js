@@ -48,6 +48,40 @@ const negocioSchema = new mongoose.Schema({
   herramientas: {
     catalogo: { type: Boolean, default: true },
     pedidos: { type: Boolean, default: false },
+    reservas: { type: Boolean, default: false },
+  },
+
+  // ─── AGENDA ──────────────────────────────────────────────────────────────
+  // El ID del calendario de Google que el dueño compartió con la cuenta de
+  // servicio. Suele ser su propio email. Vacío = sin agenda.
+  googleCalendarId: { type: String, default: "" },
+
+  // IANA, no un offset numérico: un offset se rompe con el horario de verano.
+  // Bolivia no lo tiene, pero el día que haya un cliente en Chile sí.
+  zonaHoraria: { type: String, default: "America/La_Paz" },
+
+  // Cuánto dura un turno y cada cuánto arranca uno nuevo. Separados porque no
+  // son lo mismo: una consulta de 45 minutos puede ofrecerse cada 60 para
+  // dejar aire entre una y otra.
+  duracionTurnoMinutos: { type: Number, default: 60 },
+  pasoTurnoMinutos: { type: Number, default: 60 },
+
+  // Con cuánta anticipación mínima se puede reservar. Sin esto, un cliente
+  // agenda a las 15:58 para las 16:00 y nadie llega a prepararse.
+  anticipacionMinimaHoras: { type: Number, default: 2 },
+  // Hasta cuántos días para adelante se ofrecen turnos.
+  diasMaximosAdelante: { type: Number, default: 30 },
+
+  // Un día por fila. Sin fila para un día, ese día no se atiende. Se permiten
+  // varias franjas por día para el negocio que cierra al mediodía.
+  horarioAtencion: {
+    type: [{
+      diaSemana: { type: Number, min: 0, max: 6 },  // 0 = domingo
+      horaInicio: String,                            // "09:00"
+      horaFin: String,                               // "18:00"
+      _id: false,
+    }],
+    default: [],
   },
 
   // Transcribir las notas de voz de los clientes. Se paga por minuto, así que
@@ -166,6 +200,34 @@ const pedidoSchema = new mongoose.Schema({
 });
 const Pedido = mongoose.model("Pedido", pedidoSchema);
 
+// ─── RESERVA ────────────────────────────────────────────────────────────────
+// Nuestra copia del turno. La fuente de verdad de la DISPONIBILIDAD es Google
+// Calendar —el dueño también agenda a mano desde su celular, y si no
+// miráramos su calendario ofreceríamos horarios ya ocupados—, pero acá queda
+// el turno para el panel y para que el bot sepa qué reservó cada cliente.
+const reservaSchema = new mongoose.Schema({
+  negocioId: { type: mongoose.Schema.Types.ObjectId, ref: "Negocio", required: true, index: true },
+  clienteId: { type: mongoose.Schema.Types.ObjectId, ref: "Cliente", default: null, index: true },
+  numero: { type: String, required: true, index: true },
+
+  // En UTC, siempre. La zona horaria es del negocio y se aplica al mostrar:
+  // guardar hora local es cómo se terminan teniendo turnos con una hora de
+  // diferencia cuando algo cambia.
+  inicio: { type: Date, required: true, index: true },
+  fin: { type: Date, required: true },
+
+  nombre: { type: String, default: "" },
+  motivo: { type: String, default: "" },
+
+  // El id del evento en Google. Sin esto no se puede cancelar allá lo que se
+  // cancela acá, y quedarían turnos fantasma bloqueando el calendario.
+  eventoGoogleId: { type: String, default: "", index: true },
+
+  estado: { type: String, enum: ["confirmada", "cancelada"], default: "confirmada", index: true },
+  creadaEn: { type: Date, default: Date.now },
+});
+const Reserva = mongoose.model("Reserva", reservaSchema);
+
 // ─── CLIENTE ────────────────────────────────────────────────────────────────
 // Quién es la persona, separado de lo que dijo. Va en su propia colección y no
 // como campos dentro de Conversacion porque son cosas distintas con vidas
@@ -238,4 +300,4 @@ const conversacionSchema = new mongoose.Schema({
 conversacionSchema.index({ negocioId: 1, numero: 1 }, { unique: true });
 const Conversacion = mongoose.model("Conversacion", conversacionSchema);
 
-module.exports = { Negocio, Usuario, Documento, Fragmento, Producto, Pedido, Cliente, Conversacion };
+module.exports = { Negocio, Usuario, Documento, Fragmento, Producto, Pedido, Reserva, Cliente, Conversacion };

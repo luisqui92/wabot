@@ -74,6 +74,10 @@ const CONFIG = {
   //   openssl rand -base64 48
   // Guardala TAMBIÉN fuera del servidor: si se pierde el servidor y la clave
   // estaba solo ahí, los respaldos no se pueden abrir.
+  // El JSON completo de la cuenta de servicio de Google, en una línea. Es lo
+  // que permite leer y escribir en el calendario que el negocio comparta.
+  GOOGLE_SERVICE_ACCOUNT_JSON: process.env.GOOGLE_SERVICE_ACCOUNT_JSON || "",
+
   BACKUP_CLAVE: process.env.BACKUP_CLAVE || "",
   BACKUP_DIR: process.env.BACKUP_DIR || `${process.env.HOME || "/home/rastreoplus"}/respaldos`,
   BACKUP_RETENCION_DIAS: parseInt(process.env.BACKUP_RETENCION_DIAS || "14", 10),

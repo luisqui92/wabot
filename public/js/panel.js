@@ -74,6 +74,7 @@ const CARGADORES = {
   conocimiento: cargarConocimiento,
   catalogo: cargarCatalogo,
   pedidos: cargarPedidos,
+  agenda: cargarAgenda,
   clientes: cargarClientes,
   conversaciones: cargarConversaciones,
   huecos: cargarHuecos,
@@ -108,6 +109,7 @@ async function cargarNegocio() {
   $("#n-activo").checked = !!n.activo;
   $("#h-catalogo").checked = !!n.herramientas?.catalogo;
   $("#h-pedidos").checked = !!n.herramientas?.pedidos;
+  $("#h-reservas").checked = !!n.herramientas?.reservas;
   $("#n-audios").checked = !!n.transcribirAudios;
 
   // El aviso importa: significa que hay información cargada que el bot NO
@@ -134,7 +136,7 @@ $("#form-negocio").addEventListener("submit", async (e) => {
         mensajeSinInfo: $("#n-mensajeSinInfo").value,
         numeroEscalamiento: $("#n-numeroEscalamiento").value.replace(/[^0-9]/g, ""),
         activo: $("#n-activo").checked,
-        herramientas: { catalogo: $("#h-catalogo").checked, pedidos: $("#h-pedidos").checked },
+        herramientas: { catalogo: $("#h-catalogo").checked, pedidos: $("#h-pedidos").checked, reservas: $("#h-reservas").checked },
         transcribirAudios: $("#n-audios").checked,
       }),
     });
@@ -212,6 +214,123 @@ async function cargarConocimiento() {
     fila.append(toggle);
     item.append(fila, el("p", null, f.texto));
     cc.append(item);
+  }
+}
+
+// ─── AGENDA ─────────────────────────────────────────────────────────────────
+const NOMBRES_DIA = ["domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"];
+
+function filaFranja({ diaSemana = 1, horaInicio = "09:00", horaFin = "18:00" } = {}) {
+  const fila = el("div", "franja");
+  const dia = document.createElement("select");
+  NOMBRES_DIA.forEach((n, i) => {
+    const o = document.createElement("option");
+    o.value = i; o.textContent = n; if (i === diaSemana) o.selected = true;
+    dia.append(o);
+  });
+  const desde = el("input"); desde.type = "time"; desde.value = horaInicio;
+  const hasta = el("input"); hasta.type = "time"; hasta.value = horaFin;
+  const quitar = el("button", "peligro", "Quitar");
+  quitar.type = "button";
+  quitar.addEventListener("click", () => fila.remove());
+  fila.append(dia, el("span", "nota", "de"), desde, el("span", "nota", "a"), hasta, quitar);
+  fila.leer = () => ({ diaSemana: +dia.value, horaInicio: desde.value, horaFin: hasta.value });
+  return fila;
+}
+
+$("#btn-franja").addEventListener("click", () => $("#horario").append(filaFranja()));
+
+async function cargarAgenda() {
+  const c = await api("/agenda/config");
+  $("#a-calendario").value = c.googleCalendarId;
+  $("#a-zona").value = c.zonaHoraria || "America/La_Paz";
+  $("#a-duracion").value = c.duracionTurnoMinutos;
+  $("#a-paso").value = c.pasoTurnoMinutos;
+  $("#a-anticipacion").value = c.anticipacionMinimaHoras;
+  $("#a-dias").value = c.diasMaximosAdelante;
+
+  const instr = $("#agenda-instrucciones");
+  instr.replaceChildren();
+  if (c.emailParaCompartir) {
+    instr.append(document.createTextNode("En Google Calendar: Configuración del calendario → Compartir con determinadas personas → Agregar → "));
+    const email = el("code", null, c.emailParaCompartir);
+    instr.append(email);
+    instr.append(document.createTextNode(" → permiso «Hacer cambios en los eventos». Sin ese permiso el bot puede leer pero no agendar."));
+  } else {
+    instr.textContent = "⚠ Falta GOOGLE_SERVICE_ACCOUNT_JSON en el .env del servidor. Sin eso la agenda no puede funcionar.";
+  }
+
+  const cont = $("#horario");
+  cont.replaceChildren();
+  (c.horarioAtencion.length ? c.horarioAtencion : [{}]).forEach(f => cont.append(filaFranja(f)));
+
+  await cargarReservas();
+}
+
+$("#form-agenda").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  try {
+    await api("/agenda/config", { method: "PUT", body: JSON.stringify({
+      googleCalendarId: $("#a-calendario").value,
+      zonaHoraria: $("#a-zona").value,
+      duracionTurnoMinutos: $("#a-duracion").value,
+      pasoTurnoMinutos: $("#a-paso").value,
+      anticipacionMinimaHoras: $("#a-anticipacion").value,
+      diasMaximosAdelante: $("#a-dias").value,
+      horarioAtencion: [...$("#horario").children].map(f => f.leer()),
+    }) });
+    $("#agenda-estado").textContent = "Guardado ✓";
+    setTimeout(() => { $("#agenda-estado").textContent = ""; }, 2500);
+  } catch (err) { mostrarError(err); }
+});
+
+$("#btn-probar-agenda").addEventListener("click", async () => {
+  const cont = $("#disponibilidad");
+  cont.replaceChildren(el("p", "nota", "Consultando Google Calendar…"));
+  try {
+    const dias = await api("/agenda/disponibilidad");
+    cont.replaceChildren();
+    if (!dias.length) {
+      cont.append(el("p", "nota", "Sin horarios libres. Revisá el horario de atención, o el calendario está lleno."));
+      return;
+    }
+    for (const d of dias) {
+      const caja = el("div", "dia-libre");
+      caja.append(el("h4", null, `${d.diaNombre} ${d.fecha}`));
+      const horas = el("div", "horas");
+      d.turnos.forEach(t => horas.append(el("span", "hora-libre", t.hora)));
+      caja.append(horas);
+      cont.append(caja);
+    }
+  } catch (err) {
+    cont.replaceChildren(el("p", "error", err.message));
+  }
+});
+
+async function cargarReservas() {
+  const reservas = await api("/reservas");
+  const cont = $("#lista-reservas");
+  cont.replaceChildren();
+  if (!reservas.length) { cont.append(el("p", "nota", "Ningún turno próximo.")); return; }
+  for (const r of reservas) {
+    const item = el("div", "item");
+    const fila = el("div", "fila");
+    fila.append(el("h3", null, `${r.diaNombre} ${r.fechaLocal} — ${r.horaLocal}`));
+    if (r.estado === "cancelada") fila.append(el("span", "badge", "cancelada"));
+    item.append(fila);
+    item.append(el("p", null, r.nombre || r.numero));
+    if (r.motivo) item.append(el("p", "meta", r.motivo));
+    item.append(el("p", "meta", r.numero));
+    if (r.estado === "confirmada") {
+      const cancelar = el("button", "peligro", "Cancelar turno");
+      cancelar.addEventListener("click", async () => {
+        if (!confirm("¿Cancelar este turno? También se borra del Google Calendar.")) return;
+        try { await api(`/reservas/${r._id}`, { method: "DELETE" }); await cargarReservas(); }
+        catch (err) { mostrarError(err); }
+      });
+      item.append(cancelar);
+    }
+    cont.append(item);
   }
 }
 

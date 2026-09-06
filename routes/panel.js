@@ -2,7 +2,7 @@
 // de requireAuth y filtrado por req.sesion.negocioId: ningún endpoint acepta
 // un negocioId que venga del cliente, porque eso sería dejar que un negocio
 // lea o edite la base de conocimiento de otro.
-const { Negocio, Usuario, Documento, Fragmento, Producto, Pedido, Cliente, Conversacion } = require("../db/models");
+const { Negocio, Usuario, Documento, Fragmento, Producto, Pedido, Reserva, Cliente, Conversacion } = require("../db/models");
 const { verificarPassword, generarToken, requireAuth } = require("../services/auth");
 const { asyncRoute, ErrorHttp, obtenerOFallar } = require("../services/httpHelpers");
 const { fragmentar, armarContexto } = require("../services/baseConocimiento");
@@ -10,6 +10,8 @@ const { agregarMensaje } = require("../services/conversacion");
 const { actualizarResumen } = require("../services/cliente");
 const { transcribir, MAX_BYTES } = require("../services/audio");
 const express = require("express");
+const { disponibilidad, cancelar, enZona, DIAS } = require("../services/agenda");
+const { emailCuentaDeServicio } = require("../services/googleCalendar");
 const { enviarTexto } = require("../services/metaWhatsapp");
 
 const auth = requireAuth(["admin"]);
@@ -54,6 +56,7 @@ module.exports = function (app) {
     if (req.body.herramientas) {
       cambios["herramientas.catalogo"] = !!req.body.herramientas.catalogo;
       cambios["herramientas.pedidos"] = !!req.body.herramientas.pedidos;
+      cambios["herramientas.reservas"] = !!req.body.herramientas.reservas;
     }
     // phoneNumberId no está en la lista a propósito: cambiarlo desde el panel
     // desconecta el bot de su número sin que nadie se entere hasta que un
@@ -137,6 +140,92 @@ module.exports = function (app) {
   app.delete("/api/fragmentos/:id", auth, asyncRoute(async (req, res) => {
     const f = await obtenerOFallar(Fragmento, { _id: req.params.id, negocioId: req.sesion.negocioId }, "Fragmento no encontrado");
     await f.deleteOne();
+    res.json({ ok: true });
+  }));
+
+  // ─── AGENDA ──────────────────────────────────────────────────────────────
+  app.get("/api/agenda/config", auth, asyncRoute(async (req, res) => {
+    const n = await Negocio.findById(req.sesion.negocioId).lean();
+    res.json({
+      googleCalendarId: n.googleCalendarId || "",
+      zonaHoraria: n.zonaHoraria,
+      duracionTurnoMinutos: n.duracionTurnoMinutos,
+      pasoTurnoMinutos: n.pasoTurnoMinutos,
+      anticipacionMinimaHoras: n.anticipacionMinimaHoras,
+      diasMaximosAdelante: n.diasMaximosAdelante,
+      horarioAtencion: n.horarioAtencion || [],
+      // El email con el que hay que compartir el calendario. Sin mostrarlo,
+      // configurar esto es imposible: no hay de dónde sacarlo.
+      emailParaCompartir: emailCuentaDeServicio(),
+    });
+  }));
+
+  app.put("/api/agenda/config", auth, asyncRoute(async (req, res) => {
+    const n = await Negocio.findById(req.sesion.negocioId);
+    if (req.body.googleCalendarId !== undefined) n.googleCalendarId = String(req.body.googleCalendarId).trim();
+    if (req.body.zonaHoraria) {
+      // Se valida contra Intl en vez de una lista fija: una zona inválida
+      // haría que TODOS los cálculos de horario tiren excepción, y el síntoma
+      // sería "la agenda no anda" sin decir por qué.
+      try { new Intl.DateTimeFormat("en", { timeZone: req.body.zonaHoraria }); }
+      catch { throw new ErrorHttp(400, `"${req.body.zonaHoraria}" no es una zona horaria válida. Ej: America/La_Paz`); }
+      n.zonaHoraria = req.body.zonaHoraria;
+    }
+    for (const campo of ["duracionTurnoMinutos", "pasoTurnoMinutos", "anticipacionMinimaHoras", "diasMaximosAdelante"]) {
+      if (req.body[campo] !== undefined) n[campo] = Math.max(0, parseInt(req.body[campo], 10) || 0);
+    }
+    if (n.duracionTurnoMinutos < 5) throw new ErrorHttp(400, "Un turno no puede durar menos de 5 minutos");
+    if (n.pasoTurnoMinutos < 5) n.pasoTurnoMinutos = n.duracionTurnoMinutos;
+
+    if (Array.isArray(req.body.horarioAtencion)) {
+      const franjas = [];
+      for (const f of req.body.horarioAtencion) {
+        const dia = parseInt(f.diaSemana, 10);
+        if (!(dia >= 0 && dia <= 6)) continue;
+        if (!/^\d{1,2}:\d{2}$/.test(f.horaInicio || "") || !/^\d{1,2}:\d{2}$/.test(f.horaFin || "")) continue;
+        const horaInicio = String(f.horaInicio).padStart(5, "0");
+        const horaFin = String(f.horaFin).padStart(5, "0");
+        // Una franja que cierra antes de abrir no genera turnos y nadie
+        // entiende por qué: se rechaza acá, donde se puede explicar.
+        if (horaFin <= horaInicio) throw new ErrorHttp(400, `${DIAS[dia]}: la hora de cierre (${horaFin}) tiene que ser posterior a la de apertura (${horaInicio})`);
+        franjas.push({ diaSemana: dia, horaInicio, horaFin });
+      }
+      n.horarioAtencion = franjas;
+    }
+    await n.save();
+    res.json({ ok: true });
+  }));
+
+  // Ver la disponibilidad como la ve el bot. Es la forma de comprobar que el
+  // calendario quedó bien conectado sin tener que escribirle por WhatsApp.
+  app.get("/api/agenda/disponibilidad", auth, asyncRoute(async (req, res) => {
+    const negocio = await Negocio.findById(req.sesion.negocioId).lean();
+    if (!negocio.googleCalendarId) throw new ErrorHttp(400, "Falta configurar el calendario");
+    try {
+      res.json(await disponibilidad(negocio, { dias: Math.min(parseInt(req.query.dias, 10) || 7, 30) }));
+    } catch (e) {
+      // El error de Google trae la explicación de qué falta configurar; se
+      // pasa tal cual en vez de un 500 genérico.
+      throw new ErrorHttp(502, e.message);
+    }
+  }));
+
+  app.get("/api/reservas", auth, asyncRoute(async (req, res) => {
+    const negocio = await Negocio.findById(req.sesion.negocioId).lean();
+    const filtro = { negocioId: req.sesion.negocioId };
+    if (req.query.estado) filtro.estado = req.query.estado;
+    if (req.query.desde !== "todas") filtro.inicio = { $gte: new Date() };
+    const reservas = await Reserva.find(filtro).sort({ inicio: 1 }).limit(200).lean();
+    res.json(reservas.map(r => {
+      const z = enZona(r.inicio, negocio.zonaHoraria);
+      return { ...r, fechaLocal: z.fecha, horaLocal: z.hora, diaNombre: DIAS[z.diaSemana] };
+    }));
+  }));
+
+  app.delete("/api/reservas/:id", auth, asyncRoute(async (req, res) => {
+    const reserva = await obtenerOFallar(Reserva, { _id: req.params.id, negocioId: req.sesion.negocioId }, "Reserva no encontrada");
+    const negocio = await Negocio.findById(req.sesion.negocioId);
+    await cancelar(negocio, reserva);
     res.json({ ok: true });
   }));
 

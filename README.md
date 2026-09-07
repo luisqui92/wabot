@@ -238,6 +238,28 @@ El bot decide solo cuándo mandarla, con la herramienta `mandar_foto`.
 `buscar_productos` le marca con `[tiene foto]` cuáles puede pedir, así no gasta
 una vuelta pidiendo una que no existe.
 
+## Cuando el cliente manda algo que el bot no puede leer
+
+Video, documento, ubicación, sticker, y las imágenes cuando el negocio no cobra
+por QR. Antes esto se anotaba en el log y se descartaba: el cliente no recibía
+nada —silencio, que se lee como que el negocio lo ignoró— y el dueño abría
+Conversaciones y no había ni rastro de que hubiera escrito.
+
+Ahora todo eso queda en el hilo como `[el cliente mandó un video]` y se le
+contesta una sola vez, diciendo la verdad. No se intenta adivinar el contenido:
+un bot que responde cualquier cosa a una imagen es peor que uno que avisa que
+no la puede ver.
+
+Dos casos que valen la pena:
+
+- **Con pie de foto**, lo escrito va por el flujo normal y el bot lo contesta.
+  Alguien que manda una foto con "¿tienen algo así?" está haciendo una pregunta
+  que el bot sí puede responder, y ese texto antes se perdía entero.
+- **Un sticker no se contesta.** No es una pregunta; responderlo es ruido. Se
+  registra igual, para que el hilo del panel no tenga huecos.
+
+Si una persona ya tomó la conversación, el bot se calla también acá.
+
 ## Botones
 
 El bot puede ofrecer opciones para tocar en vez de escribir. Lo decide el

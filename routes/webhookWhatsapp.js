@@ -4,7 +4,7 @@
 const { CONFIG, log } = require("../config");
 const { firmaValida, marcarLeido } = require("../services/metaWhatsapp");
 const { procesarMensajeEntrante } = require("../services/conversacion");
-const { transcribirNotaDeVoz, procesarComprobante } = require("../services/conversacion");
+const { transcribirNotaDeVoz, procesarComprobante, registrarMediaSinSoporte } = require("../services/conversacion");
 
 module.exports = function (app) {
   // ─── VERIFICACIÓN ────────────────────────────────────────────────────────
@@ -56,20 +56,29 @@ async function procesarWebhook(body) {
           if (!texto) continue; // ya se le avisó al cliente adentro
         }
 
+        // El pie de foto NO se mete en extraerTexto a propósito: si lo
+        // hiciera, una captura de comprobante con "ya te pagué" escrito abajo
+        // dejaría de ir al lector de comprobantes y se trataría como un
+        // mensaje de texto cualquiera. Viaja aparte, hasta quien corresponda.
+        const pie = (msg.image?.caption || msg.video?.caption || msg.document?.caption || "").trim();
+        const nombrePerfil = value?.contacts?.[0]?.profile?.name || "";
+
         // Una imagen es, casi siempre, un comprobante de pago. Se procesa
         // aparte del flujo de texto: no hay nada que "responder", hay que
-        // leerla, verificarla y avisarle al dueño.
+        // leerla, verificarla y avisarle al dueño. Si el negocio no cobra por
+        // QR, adentro se trata como cualquier otra imagen que no se puede leer.
         if (!texto && msg.type === "image" && msg.image?.id) {
           marcarLeido(phoneNumberId, msg.id).catch(() => {});
-          await procesarComprobante({ phoneNumberId, numero: msg.from, mediaId: msg.image.id,
-            nombrePerfil: value?.contacts?.[0]?.profile?.name || "" });
+          await procesarComprobante({ phoneNumberId, numero: msg.from, mediaId: msg.image.id, pie, nombrePerfil });
           continue;
         }
 
-        // Lo que sigue sin soportarse se registra en vez de desaparecer: si
-        // alguien manda un documento y el bot no contesta, el log dice por qué.
+        // Video, documento, ubicación, sticker. Antes esto se registraba en el
+        // log y se descartaba: el cliente no recibía nada y el dueño no veía
+        // nada en el panel. Ahora queda en el hilo y se le contesta la verdad.
         if (!texto) {
-          log.info(`[WEBHOOK] ${msg.from} mandó un ${msg.type} — tipo no soportado, ignorado`);
+          marcarLeido(phoneNumberId, msg.id).catch(() => {});
+          await registrarMediaSinSoporte({ phoneNumberId, numero: msg.from, tipo: msg.type, pie, nombrePerfil });
           continue;
         }
 
@@ -80,7 +89,7 @@ async function procesarWebhook(body) {
           numero: msg.from,
           texto,
           esAudio,
-          nombrePerfil: value?.contacts?.[0]?.profile?.name || "",
+          nombrePerfil,
         });
       }
     }
@@ -99,3 +108,8 @@ function extraerTexto(msg) {
   }
   return null;
 }
+
+// Se exporta además del montaje para poder probar el ruteo por tipo de mensaje
+// —qué va al lector de comprobantes, qué al bot, qué se contesta como "no
+// puedo leer esto"— sin levantar el servidor ni firmar un webhook a mano.
+module.exports.procesarWebhook = procesarWebhook;

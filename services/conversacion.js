@@ -25,6 +25,23 @@ async function agregarMensaje(conversacion, mensaje) {
   await conversacion.save();
 }
 
+// El hilo de este número, creándolo si es el primer mensaje. Está afuera de
+// procesarMensajeEntrante porque un video o una foto que el bot no puede leer
+// también tienen que quedar registrados: si no, el dueño abre el panel y no
+// hay ni rastro de que el cliente escribió.
+async function obtenerConversacion(negocio, numero, nombrePerfil, cliente) {
+  let conversacion = await Conversacion.findOne({ negocioId: negocio._id, numero });
+  if (!conversacion) {
+    return new Conversacion({ negocioId: negocio._id, numero, nombrePerfil, clienteId: cliente._id });
+  }
+  if (nombrePerfil && conversacion.nombrePerfil !== nombrePerfil) conversacion.nombrePerfil = nombrePerfil;
+  // Las conversaciones creadas antes de que existiera Cliente no tienen
+  // clienteId. Se enlazan solas la próxima vez que el cliente escribe, sin
+  // script de migración.
+  if (!conversacion.clienteId) conversacion.clienteId = cliente._id;
+  return conversacion;
+}
+
 // Baja la nota de voz y la transcribe. Devuelve el texto, o null si no se
 // pudo — en ese caso ya se le avisó al cliente, porque el peor resultado
 // posible es que mande un audio y no pase absolutamente nada.
@@ -66,12 +83,15 @@ async function transcribirNotaDeVoz({ phoneNumberId, numero, mediaId }) {
 // Una imagen que mandó un cliente. Si el negocio cobra por QR, se trata como
 // comprobante: se lee, se compara y se avisa al dueño. Nunca se marca nada
 // como pagado — eso lo decide una persona en el panel.
-async function procesarComprobante({ phoneNumberId, numero, mediaId, nombrePerfil }) {
+async function procesarComprobante({ phoneNumberId, numero, mediaId, nombrePerfil, pie = "" }) {
   const negocio = await Negocio.findOne({ phoneNumberId });
   if (!negocio?.activo) return null;
 
   if (!negocio.herramientas?.cobros) {
-    log.info(`[COBRO] ${numero} mandó una imagen pero el negocio no tiene cobros activados`);
+    // Antes acá se devolvía null y el cliente se quedaba sin respuesta. Una
+    // imagen en un negocio que no cobra por QR es una imagen cualquiera: se
+    // trata como el resto de lo que el bot no puede leer.
+    await registrarMediaSinSoporte({ phoneNumberId, numero, tipo: "image", pie, nombrePerfil });
     return null;
   }
 
@@ -131,6 +151,19 @@ async function procesarComprobante({ phoneNumberId, numero, mediaId, nombrePerfi
     // comprobante falso.
     await enviarTexto(phoneNumberId, numero,
       "¡Gracias! Recibimos tu comprobante 🧾 Lo estamos verificando y en un momento te confirmamos.");
+
+    // El hilo tiene que mostrar que llegó el comprobante. Sin esto el dueño
+    // abre la conversación y ve un salto: el cliente dice "ahí te mando" y lo
+    // siguiente es el bot agradeciendo algo que en el panel no existe.
+    try {
+      const conversacion = await obtenerConversacion(negocio, numero, nombrePerfil, cliente);
+      await agregarMensaje(conversacion, { rol: "cliente", texto: pie ? `[el cliente mandó un comprobante] ${pie}` : "[el cliente mandó un comprobante]" });
+      await agregarMensaje(conversacion, { rol: "bot", texto: "¡Gracias! Recibimos tu comprobante 🧾 Lo estamos verificando y en un momento te confirmamos." });
+    } catch (e) {
+      // Que falle el registro en el hilo no puede tirar abajo un pago que ya
+      // quedó guardado y por el que ya se le avisó al cliente.
+      log.error("[COBRO] No se pudo registrar el comprobante en la conversación:", e.message);
+    }
     return pago;
   } catch (e) {
     log.error("[COBRO] No se pudo procesar el comprobante:", e.message);
@@ -138,6 +171,64 @@ async function procesarComprobante({ phoneNumberId, numero, mediaId, nombrePerfi
       "Recibimos tu imagen pero no la pudimos leer 🙏 En un momento te contacta una persona.").catch(() => {});
     return null;
   }
+}
+
+// Lo que el bot no puede leer: video, documento, ubicación, sticker, y las
+// imágenes cuando el negocio no cobra por QR.
+//
+// Antes esto se registraba en el log y nada más. Para el cliente era silencio
+// —mandó algo y el negocio no contestó— y para el dueño era invisible: abría
+// Conversaciones y no había ni rastro. Las dos cosas son peores que decir "no
+// puedo ver esto".
+//
+// No se intenta adivinar el contenido. Describir una foto o mirar un video es
+// otro problema, y un bot que responde cualquier cosa a una imagen es peor que
+// uno que avisa que no la puede ver.
+const RESPUESTA_POR_TIPO = {
+  image:    "por acá no puedo ver imágenes 🙏 ¿me contás qué necesitás?",
+  video:    "por acá no puedo ver videos 🙏 ¿me contás qué necesitás?",
+  document: "no puedo abrir archivos por acá 🙏 ¿me lo escribís?",
+  location: "recibí tu ubicación 🙏 en un momento te confirmamos",
+  // El sticker no es una pregunta: contestarlo es ruido. Se registra igual
+  // para que el hilo del panel no tenga huecos, pero no se contesta.
+  sticker:  null,
+};
+
+const NOMBRE_TIPO = {
+  image: "una imagen", video: "un video", document: "un archivo",
+  location: "su ubicación", sticker: "un sticker", contacts: "un contacto",
+};
+
+async function registrarMediaSinSoporte({ phoneNumberId, numero, tipo, pie, nombrePerfil }) {
+  const negocio = await Negocio.findOne({ phoneNumberId });
+  if (!negocio?.activo) return;
+
+  const etiqueta = `[el cliente mandó ${NOMBRE_TIPO[tipo] || `un ${tipo}`}]`;
+  log.info(`[MEDIA] ${numero} mandó un ${tipo}${pie ? " con pie de foto" : ""} — el bot no lo puede leer`);
+
+  // El pie de foto es lo que más importa y es justo lo que se perdía: alguien
+  // que manda una foto con "¿tienen algo así?" está haciendo una pregunta que
+  // el bot SÍ puede contestar. Va por el camino normal, con la etiqueta
+  // adelante — que le dice al modelo que hubo un archivo, y al dueño que lea
+  // el panel también.
+  //
+  // El registro lo hace procesarMensajeEntrante: guardarlo acá además dejaría
+  // el mismo mensaje dos veces en el hilo.
+  if (pie) {
+    await procesarMensajeEntrante({ phoneNumberId, numero, nombrePerfil, texto: `${etiqueta} ${pie}` });
+    return;
+  }
+
+  const cliente = await obtenerOCrear(negocio._id, numero, nombrePerfil);
+  const conversacion = await obtenerConversacion(negocio, numero, nombrePerfil, cliente);
+  await agregarMensaje(conversacion, { rol: "cliente", texto: etiqueta });
+
+  // Sin pie no hay nada que contestar salvo la verdad. Y si una persona ya
+  // tomó la conversación, se calla: el bot no interrumpe a un humano.
+  const respuesta = RESPUESTA_POR_TIPO[tipo];
+  if (!respuesta || conversacion.pausado) return;
+  await enviarTexto(phoneNumberId, numero, respuesta).catch(() => {});
+  await agregarMensaje(conversacion, { rol: "bot", texto: respuesta });
 }
 
 async function procesarMensajeEntrante({ phoneNumberId, numero, texto, nombrePerfil, esAudio = false }) {
@@ -154,17 +245,7 @@ async function procesarMensajeEntrante({ phoneNumberId, numero, texto, nombrePer
   // El cliente se resuelve siempre, incluso si la conversación está pausada:
   // que atienda una persona no significa que deje de contar como contacto.
   const cliente = await obtenerOCrear(negocio._id, numero, nombrePerfil);
-
-  let conversacion = await Conversacion.findOne({ negocioId: negocio._id, numero });
-  if (!conversacion) {
-    conversacion = new Conversacion({ negocioId: negocio._id, numero, nombrePerfil, clienteId: cliente._id });
-  } else {
-    if (nombrePerfil && conversacion.nombrePerfil !== nombrePerfil) conversacion.nombrePerfil = nombrePerfil;
-    // Las conversaciones creadas antes de que existiera Cliente no tienen
-    // clienteId. Se enlazan solas la próxima vez que el cliente escribe, sin
-    // script de migración.
-    if (!conversacion.clienteId) conversacion.clienteId = cliente._id;
-  }
+  const conversacion = await obtenerConversacion(negocio, numero, nombrePerfil, cliente);
 
   await agregarMensaje(conversacion, { rol: "cliente", texto, esAudio });
 
@@ -229,4 +310,4 @@ async function procesarMensajeEntrante({ phoneNumberId, numero, texto, nombrePer
   }
 }
 
-module.exports = { procesarMensajeEntrante, transcribirNotaDeVoz, procesarComprobante, agregarMensaje };
+module.exports = { procesarMensajeEntrante, transcribirNotaDeVoz, procesarComprobante, registrarMediaSinSoporte, agregarMensaje };

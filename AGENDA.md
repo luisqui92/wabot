@@ -33,15 +33,27 @@ que haya cientos de clientes, ahí sí conviene migrar a OAuth.
    habilitar **Google Calendar API**
 2. **IAM y administración → Cuentas de servicio → Crear**
 3. En la cuenta creada: **Claves → Agregar clave → Crear nueva → JSON**
-4. El JSON descargado va **entero, en una sola línea**, al `.env`:
+4. Subí ese archivo al servidor y cargalo:
 
 ```bash
-GOOGLE_SERVICE_ACCOUNT_JSON={"type":"service_account","project_id":"...","private_key":"-----BEGIN PRIVATE KEY-----\n...","client_email":"bot@proyecto.iam.gserviceaccount.com",...}
-```
-
-```bash
+node scripts/calendario.js ~/clave.json
 pm2 restart wabot
 ```
+
+El script valida antes de escribir —que sea una cuenta de servicio, que tenga
+`client_email` y `private_key`, y que la clave sirva para firmar de verdad— y
+después te dice qué email compartir en Calendar. Sin argumentos te dice si ya
+hay una cargada y cuál es.
+
+> **Por qué hay un script para esto.** El JSON que descarga Google viene en
+> varias líneas y un `.env` es una variable por línea: pegarlo tal cual deja la
+> variable cortada en la primera llave. Lo peor es el síntoma, que no dice nada
+> del `.env` — es la agenda contestando que no puede consultar disponibilidad.
+> A mano funciona igual, pero tiene que ir minificado en una sola línea:
+>
+> ```bash
+> GOOGLE_SERVICE_ACCOUNT_JSON={"type":"service_account","project_id":"...","private_key":"-----BEGIN PRIVATE KEY-----\n...","client_email":"bot@proyecto.iam.gserviceaccount.com",...}
+> ```
 
 > La cuenta de servicio **no necesita ningún rol de IAM**. No accede a recursos
 > del proyecto: accede a los calendarios que le compartan, y eso se autoriza

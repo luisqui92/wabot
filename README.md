@@ -210,6 +210,7 @@ public/                    el panel (sin framework, sin build)
   js/panel.js              una función cargarX() por pantalla
 scripts/crear_usuario.js   alta del negocio y del primer usuario
 scripts/clave.js           lista los usuarios y cambia una contraseña
+scripts/calendario.js      carga y valida la cuenta de servicio de Google
 scripts/cambiar_numero.js  corrige el phoneNumberId de Meta de un negocio
 scripts/demo.js            carga (y borra) el negocio de demostración
 scripts/respaldo.js        copia diaria cifrada, verificada restaurándola

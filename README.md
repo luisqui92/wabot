@@ -53,6 +53,22 @@ npm start
 
 El panel queda en `http://localhost:3000`.
 
+### Si te olvidaste el usuario o la contraseña
+
+No hay "olvidé mi contraseña" en el panel, y es a propósito: un enlace de
+recuperación por mail es una puerta más que atacar en un panel que controla una
+línea de WhatsApp real, y el dueño del servidor ya tiene un acceso más fuerte
+que ese enlace. La recuperación vive detrás de SSH:
+
+```bash
+node scripts/clave.js                            # qué usuarios hay
+node scripts/clave.js mail@ejemplo.com <nueva>   # ponerle otra contraseña
+```
+
+La contraseña vieja **no se puede recuperar**: se guarda hasheada. Cambiarla
+tampoco cierra las sesiones que ya estaban abiertas — para eso hay que cambiar
+`JWT_SECRET` en el `.env` y reiniciar.
+
 ### En producción, con su propio subdominio
 
 > **Para levantarlo desde cero en una VM nueva, seguí
@@ -193,7 +209,9 @@ public/                    el panel (sin framework, sin build)
   css/panel.css            tema claro con acento verde
   js/panel.js              una función cargarX() por pantalla
 scripts/crear_usuario.js   alta del negocio y del primer usuario
+scripts/clave.js           lista los usuarios y cambia una contraseña
 scripts/cambiar_numero.js  corrige el phoneNumberId de Meta de un negocio
+scripts/demo.js            carga (y borra) el negocio de demostración
 scripts/respaldo.js        copia diaria cifrada, verificada restaurándola
 scripts/restaurar.js       restaura un respaldo
 ```

@@ -661,6 +661,17 @@ $("#btn-importar").addEventListener("click", async () => {
   } catch (err) { mostrarError(err); }
 });
 
+async function enviarFoto(productoId, archivo) {
+  const res = await fetch(`api/productos/${productoId}/foto`, {
+    method: "POST",
+    headers: { "Content-Type": archivo.type, Authorization: `Bearer ${token}` },
+    body: archivo,
+  });
+  const d = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(d.error || `Error ${res.status}`);
+  return d;
+}
+
 async function cargarCatalogo() {
   const productos = await api("/productos");
   const cont = $("#lista-productos");
@@ -672,11 +683,61 @@ async function cargarCatalogo() {
   for (const p of productos) {
     const item = el("div", `item${p.disponible ? "" : " agotado"}`);
     const fila = el("div", "fila");
+
+    // La miniatura va primero porque es lo que el dueño escanea para saber a
+    // cuáles les falta foto, que es la tarea real de esta pantalla.
+    const miniatura = el("div", "miniatura");
+    if (p.fotoUrl) {
+      const img = el("img");
+      // El sufijo rompe el caché: sin esto, cambiar la foto de un producto
+      // sigue mostrando la vieja hasta que el navegador se digne a soltarla.
+      img.src = `${p.fotoUrl}?${Date.now()}`;
+      img.alt = p.nombre;
+      miniatura.append(img);
+    } else {
+      miniatura.classList.add("vacia");
+      miniatura.append(el("span", null, "sin foto"));
+    }
+    fila.append(miniatura);
+
     const izq = el("div");
     izq.append(el("h3", null, p.nombre));
     if (p.categoria || p.descripcion) izq.append(el("p", "meta", [p.categoria, p.descripcion].filter(Boolean).join(" · ")));
     fila.append(izq);
     fila.append(el("span", "precio", `${p.moneda} ${p.precio}`));
+
+    // El input de archivo va oculto y lo dispara el botón: el control nativo
+    // no se puede estilar y quedaría un "Choose File" en inglés por producto.
+    const archivo = el("input");
+    archivo.type = "file";
+    archivo.accept = "image/jpeg,image/png";
+    archivo.hidden = true;
+    const subir = el("button", "sutil", p.fotoUrl ? "Cambiar foto" : "Subir foto");
+    subir.addEventListener("click", () => archivo.click());
+    archivo.addEventListener("change", async (e) => {
+      const f = e.target.files[0];
+      if (!f) return;
+      subir.disabled = true;
+      subir.textContent = "Subiendo…";
+      try {
+        await enviarFoto(p._id, f);
+        await cargarCatalogo();
+      } catch (err) {
+        subir.disabled = false;
+        subir.textContent = p.fotoUrl ? "Cambiar foto" : "Subir foto";
+        mostrarError(err);
+      }
+    });
+    fila.append(archivo, subir);
+
+    if (p.fotoUrl) {
+      const quitar = el("button", "sutil", "Quitar foto");
+      quitar.addEventListener("click", async () => {
+        try { await api(`/productos/${p._id}/foto`, { method: "DELETE" }); await cargarCatalogo(); }
+        catch (err) { mostrarError(err); }
+      });
+      fila.append(quitar);
+    }
 
     const toggle = el("button", "sutil", p.disponible ? "Marcar agotado" : "Marcar disponible");
     toggle.addEventListener("click", async () => {

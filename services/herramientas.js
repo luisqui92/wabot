@@ -19,6 +19,7 @@ const { CONFIG, log } = require("../config");
 const { Producto, Pedido, Reserva, Negocio } = require("../db/models");
 const { disponibilidad, reservar, cancelar, enZona, DIAS } = require("./agenda");
 const { enviarTexto, enviarImagen } = require("./metaWhatsapp");
+const { urlFoto } = require("./media");
 
 function precio(centavos, moneda) {
   return `${moneda} ${(centavos / 100).toFixed(2)}`;
@@ -71,9 +72,75 @@ const HERRAMIENTAS = [
           ? `No hay ningún producto que coincida con "${consulta}" en el catálogo. Decile al cliente que no lo tenés y ofrecé consultarlo.`
           : "El catálogo está vacío.";
       }
+      // Se marca cuáles tienen foto para que el modelo no pida una que no
+      // existe: sin esto llama a mandar_foto a ciegas y gasta una vuelta del
+      // bucle de herramientas para que le contesten que no hay.
       return productos
-        .map(p => `${p.nombre}${p.categoria ? ` (${p.categoria})` : ""}: ${precio(p.precioCentavos, p.moneda)}${p.descripcion ? ` — ${p.descripcion}` : ""}`)
+        .map(p => `${p.nombre}${p.categoria ? ` (${p.categoria})` : ""}: ${precio(p.precioCentavos, p.moneda)}${p.descripcion ? ` — ${p.descripcion}` : ""}${p.fotoToken ? " [tiene foto]" : ""}`)
         .join("\n");
+    },
+  },
+
+  {
+    nombre: "mandar_foto",
+    requiere: "catalogo",
+    definicion: {
+      type: "function",
+      function: {
+        name: "mandar_foto",
+        description:
+          "Le manda al cliente la foto de un producto del catálogo. Usala cuando pida ver algo, " +
+          "cuando pregunte cómo es, o cuando esté dudando entre opciones y una foto lo ayude a decidir. " +
+          "Solo con los productos que buscar_productos marcó con [tiene foto]. " +
+          "Manda una sola por vez: no le llenes el chat de imágenes.",
+        parameters: {
+          type: "object",
+          properties: {
+            producto: {
+              type: "string",
+              description: "El nombre exacto del producto, tal como lo devolvió buscar_productos.",
+            },
+          },
+          required: ["producto"],
+        },
+      },
+    },
+    async ejecutar(negocio, args, contexto) {
+      const nombre = String(args?.producto || "").trim();
+      if (!nombre) return "Falta el nombre del producto. Buscalo primero con buscar_productos.";
+
+      // El filtro por negocioId es lo que impide que un cliente saque fotos
+      // del catálogo de otro negocio pidiéndolas por nombre.
+      const escapado = nombre.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const producto = await Producto.findOne({
+        negocioId: negocio._id,
+        disponible: true,
+        nombre: new RegExp(`^${escapado}$`, "i"),
+      }).lean();
+
+      if (!producto) return `No hay ningún producto disponible que se llame "${nombre}". Buscá el nombre exacto con buscar_productos.`;
+      if (!producto.fotoToken) return `"${producto.nombre}" no tiene foto cargada. Describíselo con palabras al cliente en vez de mandarle una imagen.`;
+
+      const url = urlFoto(producto);
+      if (!url) {
+        // Sin APP_URL Meta no tiene de dónde bajar la imagen. Es un error de
+        // configuración del servidor, no algo que el cliente pueda resolver:
+        // se registra fuerte y el bot sigue la conversación sin la foto.
+        log.error("[FOTO] Falta APP_URL en el .env: no se pueden mandar fotos de productos");
+        return `No se pudo mandar la foto de "${producto.nombre}". Describíselo con palabras y seguí la conversación normalmente.`;
+      }
+
+      try {
+        await enviarImagen(contexto.phoneNumberId, contexto.numero, url,
+          `${producto.nombre} — ${precio(producto.precioCentavos, producto.moneda)}`);
+      } catch (e) {
+        log.error("[FOTO] No se pudo enviar:", e.message);
+        return `No se pudo mandar la foto de "${producto.nombre}". Describíselo con palabras y seguí la conversación normalmente.`;
+      }
+
+      // Se le avisa que ya salió con el precio incluido para que no repita el
+      // precio en el texto: el cliente lo acaba de ver en el pie de la foto.
+      return `Foto de "${producto.nombre}" enviada, con el precio en el pie. No repitas el precio: ya lo vio.`;
     },
   },
 

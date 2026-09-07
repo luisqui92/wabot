@@ -100,6 +100,29 @@ router.get("/qr/:token.png", async (req, res) => {
   }
 });
 
+// La foto de un producto, pública por la misma razón que el QR: Meta la
+// descarga por URL para mostrársela al cliente. Es una foto de catálogo, está
+// hecha para verse; el token solo evita que se recorra el catálogo entero
+// adivinando ids.
+//
+// La extensión viaja en la URL además del Content-Type porque el que descarga
+// es Meta, no un navegador, y no conviene depender de que respete la cabecera.
+router.get("/foto/:archivo", async (req, res) => {
+  try {
+    const { Producto } = require("./db/models");
+    const token = String(req.params.archivo).replace(/\.(jpg|jpeg|png)$/i, "");
+    const p = await Producto.findOne({ fotoToken: token }).select("+foto").lean();
+    const bytes = aBuffer(p?.foto);
+    if (!bytes) return res.sendStatus(404);
+    res.set("Content-Type", p.fotoMime || "image/jpeg");
+    res.set("Cache-Control", "public, max-age=300");
+    res.send(bytes);
+  } catch (e) {
+    log.error("[FOTO]", e.message);
+    res.sendStatus(500);
+  }
+});
+
 router.get("/salud", (_req, res) => res.json({
   ok: true,
   mongo: mongoose.connection.readyState === 1,

@@ -31,6 +31,91 @@ const svg = (cuerpo, w, h) =>
   Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" font-family="Helvetica, Arial, sans-serif">${cuerpo}</svg>`, "utf-8");
 const MIME_SVG = "image/svg+xml";
 
+// ─── PNG generado a mano ─────────────────────────────────────────────────────
+// Las fotos de producto NO pueden ser SVG: Meta solo acepta JPEG y PNG para
+// mensajes de imagen (ver services/media.js). Sembrar un SVG dejaría en la
+// demo una foto que el propio panel rechazaría si la subieras a mano.
+//
+// Codificar un PNG son treinta líneas y evita meter binarios al repositorio,
+// que es lo que hay que evitar de verdad: un .png por producto son megabytes
+// que quedan para siempre en el historial de git.
+const zlib = require("zlib");
+
+const TABLA_CRC = (() => {
+  const t = new Array(256);
+  for (let n = 0; n < 256; n++) {
+    let c = n;
+    for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1;
+    t[n] = c >>> 0;
+  }
+  return t;
+})();
+
+function crc32(buf) {
+  let x = 0xFFFFFFFF;
+  for (const b of buf) x = TABLA_CRC[(x ^ b) & 0xFF] ^ (x >>> 8);
+  return (x ^ 0xFFFFFFFF) >>> 0;
+}
+
+function trozo(tipo, datos) {
+  const largo = Buffer.alloc(4);
+  largo.writeUInt32BE(datos.length);
+  const cuerpo = Buffer.concat([Buffer.from(tipo, "ascii"), datos]);
+  const crc = Buffer.alloc(4);
+  crc.writeUInt32BE(crc32(cuerpo));
+  return Buffer.concat([largo, cuerpo, crc]);
+}
+
+// RGB de 8 bits sin interlazado (tipo de color 2). `pixel(x, y)` devuelve
+// [r, g, b]; cada fila lleva adelante un byte 0 que es el filtro "ninguno".
+function png(ancho, alto, pixel) {
+  const filas = Buffer.alloc(alto * (1 + ancho * 3));
+  for (let y = 0; y < alto; y++) {
+    const base = y * (1 + ancho * 3);
+    for (let x = 0; x < ancho; x++) {
+      const [r, g, b] = pixel(x, y);
+      const i = base + 1 + x * 3;
+      filas[i] = r; filas[i + 1] = g; filas[i + 2] = b;
+    }
+  }
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(ancho, 0);
+  ihdr.writeUInt32BE(alto, 4);
+  ihdr[8] = 8;  // bits por canal
+  ihdr[9] = 2;  // color: RGB
+  return Buffer.concat([
+    Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
+    trozo("IHDR", ihdr),
+    trozo("IDAT", zlib.deflateSync(filas)),
+    trozo("IEND", Buffer.alloc(0)),
+  ]);
+}
+
+// Una foto por categoría, no una por producto: alcanza para ver la pantalla
+// llena y no infla la base con 26 imágenes distintas. Cada una es un degradado
+// con grano, con el tono del rubro.
+const TONO = {
+  Pizzas:   [196, 84, 42],
+  Entradas: [176, 132, 58],
+  Pastas:   [198, 158, 86],
+  Bebidas:  [58, 118, 156],
+  Postres:  [148, 84, 128],
+};
+
+function fotoDe(categoria) {
+  const [r, g, b] = TONO[categoria] || [120, 120, 120];
+  return png(160, 160, (x, y) => {
+    const d = (x + y) / 320;                       // degradado en diagonal
+    // Grano determinista: sin esto las cinco fotos se ven como rectángulos
+    // planos y no se nota que la miniatura recorta la imagen.
+    const grano = ((x * 37 + y * 61) % 23) - 11;
+    const f = (c) => Math.max(0, Math.min(255, Math.round(c * (0.62 + d * 0.5) + grano)));
+    return [f(r), f(g), f(b)];
+  });
+}
+
+const FOTOS = Object.fromEntries(Object.keys(TONO).map(c => [c, fotoDe(c)]));
+
 // Captura de transferencia como la que manda un cliente por WhatsApp.
 function comprobante({ banco, monto, referencia, fecha, emisor, destino }) {
   const linea = (y, et, val, negrita) =>
@@ -239,9 +324,15 @@ async function crear() {
     ...CORRECCIONES.map(([titulo, texto]) => ({ negocioId: negocio._id, titulo, texto, origen: "correccion" })),
   ]);
 
-  const productos = await Producto.insertMany(PRODUCTOS.map(([nombre, precioCentavos, categoria, descripcion]) => ({
+  // Los postres quedan sin foto a propósito: la pantalla tiene que mostrar
+  // también cómo se ve un producto al que le falta, que es el estado en el que
+  // arranca cualquier catálogo real.
+  const productos = await Producto.insertMany(PRODUCTOS.map(([nombre, precioCentavos, categoria, descripcion], i) => ({
     negocioId: negocio._id, nombre, precioCentavos, categoria, descripcion, moneda: "BOB",
     disponible: nombre !== "Ñoquis con salsa",   // uno agotado, para ver cómo se muestra
+    ...(categoria !== "Postres" && FOTOS[categoria]
+      ? { foto: FOTOS[categoria], fotoMime: "image/png", fotoToken: `demofoto${i}` }
+      : {}),
   })));
   const buscar = (n) => productos.find(p => p.nombre === n);
 

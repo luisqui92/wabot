@@ -216,6 +216,28 @@ scripts/respaldo.js        copia diaria cifrada, verificada restaurándola
 scripts/restaurar.js       restaura un respaldo
 ```
 
+## Fotos de producto
+
+Cada producto del catálogo puede tener una foto, y el bot la manda cuando el
+cliente pide ver algo. Se sube desde **Catálogo**, una por producto.
+
+Dos cosas que el módulo hace explícitas porque fallan en silencio:
+
+- **Solo JPEG y PNG.** Meta no acepta otra cosa en un mensaje de imagen. Un
+  WEBP se ve perfecto en el panel y no le llega nada al cliente, así que se
+  rechaza al subir, con el formato en el mensaje de error.
+- **Hace falta `APP_URL`.** Meta descarga la foto por URL pública desde sus
+  servidores; sin dominio no hay URL que darle. Si falta, el bot sigue la
+  conversación describiendo el producto con palabras y lo deja en el log.
+
+La foto se sirve en `/foto/<token>.<ext>`, pública como el QR de cobro y por la
+misma razón. El token cambia en cada carga: cambiar la imagen de un producto
+invalida la URL anterior.
+
+El bot decide solo cuándo mandarla, con la herramienta `mandar_foto`.
+`buscar_productos` le marca con `[tiene foto]` cuáles puede pedir, así no gasta
+una vuelta pidiendo una que no existe.
+
 ## Botones
 
 El bot puede ofrecer opciones para tocar en vez de escribir. Lo decide el

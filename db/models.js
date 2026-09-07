@@ -197,6 +197,18 @@ const productoSchema = new mongoose.Schema({
   // Cuando está en false el bot deja de ofrecerlo, pero no se pierde el
   // producto ni su historial de pedidos.
   disponible: { type: Boolean, default: true },
+
+  // La foto del producto. select:false porque un catálogo de 200 productos
+  // con foto son cientos de megas, y ninguna pantalla que lista productos
+  // necesita los bytes — se sirven por su propia ruta.
+  //
+  // El token va en la URL pública que se le pasa a Meta para que descargue la
+  // imagen. Que sea aleatorio no la hace secreta (una foto de catálogo está
+  // para verse): evita que se pueda recorrer el catálogo entero adivinando
+  // ids, que es distinto.
+  foto: { type: Buffer, select: false },
+  fotoMime: { type: String, default: "" },
+  fotoToken: { type: String, default: "", index: true },
   creadoEn: { type: Date, default: Date.now },
 });
 productoSchema.index({ negocioId: 1, nombre: "text", descripcion: "text", categoria: "text" });

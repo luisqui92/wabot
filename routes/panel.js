@@ -14,6 +14,7 @@ const express = require("express");
 const { disponibilidad, cancelar, enZona, DIAS } = require("../services/agenda");
 const { emailCuentaDeServicio } = require("../services/googleCalendar");
 const { MAX_BYTES: MAX_IMAGEN } = require("../services/comprobante");
+const { MAX_IMAGEN: MAX_FOTO, MIMES_IMAGEN, mimeLimpio, imagenValida, rutaFoto } = require("../services/media");
 const crypto = require("crypto");
 const { CONFIG } = require("../config");
 const { enviarTexto } = require("../services/metaWhatsapp");
@@ -530,7 +531,7 @@ module.exports = function (app) {
   // si cada endpoint la hiciera por su cuenta, tarde o temprano uno redondea
   // distinto y un precio queda mal por un centavo.
   const aCentavos = (v) => Math.round(parseFloat(String(v).replace(",", ".")) * 100) || 0;
-  const conPrecio = (p) => ({ ...p, precio: (p.precioCentavos / 100).toFixed(2) });
+  const conPrecio = (p) => ({ ...p, precio: (p.precioCentavos / 100).toFixed(2), fotoUrl: rutaFoto(p) });
 
   app.get("/api/productos", auth, asyncRoute(async (req, res) => {
     const productos = await Producto.find({ negocioId: req.sesion.negocioId }).sort({ categoria: 1, nombre: 1 }).lean();
@@ -565,6 +566,37 @@ module.exports = function (app) {
   app.delete("/api/productos/:id", auth, asyncRoute(async (req, res) => {
     const p = await obtenerOFallar(Producto, { _id: req.params.id, negocioId: req.sesion.negocioId }, "Producto no encontrado");
     await p.deleteOne();
+    res.json({ ok: true });
+  }));
+
+  // La foto va por su propio endpoint y no dentro del PUT del producto: son
+  // megabytes de binario, y meterlos en el JSON obligaría a mandar la imagen
+  // entera cada vez que se corrige un precio.
+  app.post("/api/productos/:id/foto", auth, express.raw({ type: "image/*", limit: MAX_FOTO }),
+    asyncRoute(async (req, res) => {
+      if (!Buffer.isBuffer(req.body) || !req.body.length) throw new ErrorHttp(400, "No llegó ninguna imagen");
+      const mime = mimeLimpio(req.headers["content-type"]);
+      // Se rechaza acá y con el formato en el mensaje: si se aceptara un WEBP,
+      // el dueño lo vería bien en el panel y el cliente no recibiría nada.
+      if (!imagenValida(mime)) {
+        throw new ErrorHttp(400, `WhatsApp solo acepta ${MIMES_IMAGEN.join(" o ")}. Esta imagen es ${mime || "de tipo desconocido"} — convertila y volvé a subirla.`);
+      }
+      const p = await obtenerOFallar(Producto, { _id: req.params.id, negocioId: req.sesion.negocioId }, "Producto no encontrado");
+      p.foto = req.body;
+      p.fotoMime = mime;
+      // Token nuevo en cada carga: si la foto vieja quedó cacheada en Meta o
+      // circulando en un chat, cambiar la imagen tiene que cambiar la URL.
+      p.fotoToken = crypto.randomBytes(16).toString("hex");
+      await p.save();
+      res.json({ fotoUrl: rutaFoto(p) });
+    }));
+
+  app.delete("/api/productos/:id/foto", auth, asyncRoute(async (req, res) => {
+    const p = await obtenerOFallar(Producto, { _id: req.params.id, negocioId: req.sesion.negocioId }, "Producto no encontrado");
+    p.foto = undefined;
+    p.fotoMime = "";
+    p.fotoToken = "";
+    await p.save();
     res.json({ ok: true });
   }));
 

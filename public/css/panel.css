@@ -26,7 +26,10 @@ body {
 .oculto { display: none !important; }
 
 /* ─── Login ──────────────────────────────────────────────────────────── */
-.centrado { min-height: 100vh; display: grid; place-items: center; padding: 20px;
+/* align-content ademas de place-items: al sumarse la firma debajo de la
+   tarjeta, la grilla pasa a tener dos filas y sin esto se apilan arriba en vez
+   de quedar centradas como bloque. */
+.centrado { min-height: 100vh; display: grid; place-items: center; align-content: center; padding: 20px;
   background: radial-gradient(120% 100% at 50% 0%, var(--acento-luz) 0%, var(--fondo) 55%); }
 .tarjeta { background: var(--superficie); border: 1px solid var(--borde); border-radius: var(--radio);
   padding: 26px; width: 100%; max-width: 380px; display: flex; flex-direction: column; gap: 14px;
@@ -68,6 +71,15 @@ code { background: #eef1ea; padding: 1px 6px; border-radius: 5px; font-size: 12.
 .marca { display: flex; align-items: center; gap: 9px; padding: 0 8px; }
 .logo { color: var(--acento); font-size: 17px; }
 .marca-nombre { font-weight: 650; letter-spacing: .09em; font-size: 13.5px; }
+/* La misma marca que la barra lateral, en grande y centrada: el login no
+   inventa una tipografia propia, es la misma identidad mas cerca. */
+.marca-login { justify-content: center; padding: 0 0 4px; }
+.marca-login .logo { font-size: 22px; }
+.marca-login .marca-nombre { font-size: 19px; letter-spacing: .13em; }
+/* Va fuera de la tarjeta: quien firma el producto es ChatGo, no es un campo
+   mas del formulario. */
+.firma { margin: 14px 0 0; text-align: center; font-size: 12px; color: var(--suave); letter-spacing: .02em; }
+.firma strong { font-weight: 600; color: var(--texto); }
 
 .workspace { padding: 0 8px; }
 .workspace-etiqueta { font-size: 10px; letter-spacing: .1em; color: var(--suave); }

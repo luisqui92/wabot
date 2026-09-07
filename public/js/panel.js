@@ -30,7 +30,10 @@ async function api(ruta, opciones = {}) {
       ...opciones.headers,
     },
   });
-  if (res.status === 401) { cerrarSesion(); throw new Error("Sesión vencida"); }
+  // Solo si YA había sesión. Sin esta condición, el 401 del propio login
+  // —cuando todavía no hay token— se mostraba como "Sesión vencida" en vez de
+  // "Email o contraseña incorrectos", que es lo que el servidor manda.
+  if (res.status === 401 && token) { cerrarSesion(); throw new Error("Sesión vencida"); }
   const datos = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(datos.error || `Error ${res.status}`);
   return datos;

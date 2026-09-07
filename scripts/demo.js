@@ -11,6 +11,7 @@ const mongoose = require("mongoose");
 const { CONFIG, log, validateConfig } = require("../config");
 const { Negocio, Usuario, Documento, Fragmento, Producto, Pedido, Pago, Reserva, Cliente, Conversacion } = require("../db/models");
 const { hashPassword } = require("../services/auth");
+const crypto = require("crypto");
 
 const PHONE_ID_DEMO = "DEMO-PIZZERIA";
 const EMAIL_DEMO = "demo@wabot.local";
@@ -270,6 +271,96 @@ const CONVERSACIONES = [
   ]},
 ];
 
+// ─── Cargar el ejemplo EN UN NEGOCIO QUE YA EXISTE ──────────────────────────
+// La demo completa vive en su propio negocio, con su propio login, para no
+// poder tocar una línea real. Eso la hace segura y también invisible: quien
+// entra a su panel sigue viendo el suyo vacío.
+//
+// Esto es para el otro caso: llenar el catálogo y el conocimiento del negocio
+// que ya tenés, para probar el bot por WhatsApp con contenido de verdad.
+//
+// Solo carga catálogo y conocimiento. NO toca la configuración del negocio
+// (nombre, voz, horarios, QR, herramientas) ni crea clientes, conversaciones,
+// pedidos ni pagos falsos: eso ensuciaría el panel de un negocio real con
+// datos que después no se distinguen de los verdaderos.
+const NOMBRE_DOC = "Información del local (ejemplo)";
+
+async function negocioPorTelefono(phoneNumberId) {
+  const negocio = await Negocio.findOne({ phoneNumberId });
+  if (negocio) return negocio;
+  const todos = await Negocio.find().select("nombre phoneNumberId").lean();
+  console.error(`\nNo hay ningún negocio con phoneNumberId "${phoneNumberId}".\n`);
+  console.error(todos.length ? "Los que hay son:" : "No hay ningún negocio cargado.");
+  for (const n of todos) console.error(`  ${n.phoneNumberId}  —  ${n.nombre}`);
+  console.error("");
+  process.exit(1);
+}
+
+async function llenar(phoneNumberId) {
+  const negocio = await negocioPorTelefono(phoneNumberId);
+
+  // Los que ya existan se respetan: si el dueño cargó "Coca-Cola 2L" con su
+  // precio, el ejemplo no se lo pisa.
+  const existentes = new Set((await Producto.find({ negocioId: negocio._id }).select("nombre").lean()).map(p => p.nombre));
+  const aCargar = PRODUCTOS.filter(([nombre]) => !existentes.has(nombre));
+
+  // Los fragmentos viejos se borran ANTES de crear el documento nuevo y usando
+  // los ids VIEJOS. Al revés —crear primero y borrar por el id nuevo— los del
+  // documento anterior quedan huérfanos, y cada corrida agrega otros doce.
+  const viejos = await Documento.find({ negocioId: negocio._id, nombre: NOMBRE_DOC }).select("_id").lean();
+  if (viejos.length) {
+    await Fragmento.deleteMany({ negocioId: negocio._id, documentoId: { $in: viejos.map(d => d._id) } });
+    await Documento.deleteMany({ negocioId: negocio._id, nombre: NOMBRE_DOC });
+  }
+  const doc = await Documento.create({ negocioId: negocio._id, nombre: NOMBRE_DOC,
+    textoOriginal: CONOCIMIENTO.map(([t, x]) => `## ${t}\n${x}`).join("\n\n") });
+  await Fragmento.insertMany(CONOCIMIENTO.map(([titulo, texto]) =>
+    ({ negocioId: negocio._id, documentoId: doc._id, titulo, texto, origen: "documento" })));
+
+  if (aCargar.length) {
+    await Producto.insertMany(aCargar.map(([nombre, precioCentavos, categoria, descripcion]) => ({
+      negocioId: negocio._id, nombre, precioCentavos, categoria, descripcion, moneda: "BOB",
+      disponible: nombre !== "Ñoquis con salsa",
+      ...(categoria !== "Postres" && FOTOS[categoria]
+        ? { foto: FOTOS[categoria], fotoMime: "image/png", fotoToken: crypto.randomBytes(16).toString("hex") }
+        : {}),
+    })));
+  }
+
+  const saltados = PRODUCTOS.length - aCargar.length;
+  console.log(`
+✅ Ejemplo cargado en "${negocio.nombre}" (${phoneNumberId})
+
+   ${aCargar.length} producto${aCargar.length === 1 ? "" : "s"}${saltados ? ` (${saltados} ya ${saltados === 1 ? "existía" : "existían"} y no se ${saltados === 1 ? "tocó" : "tocaron"})` : ""}
+   ${CONOCIMIENTO.length} fragmentos de conocimiento
+
+No se tocó nada más: ni la voz del bot, ni los horarios, ni el QR, ni tus
+conversaciones. Si querés que el bot use el catálogo, revisá que "Consultar
+precios" esté encendido en la pestaña Bot.
+
+Para sacarlo:  node scripts/demo.js --borrar --en ${phoneNumberId}
+`);
+}
+
+async function vaciar(phoneNumberId) {
+  const negocio = await negocioPorTelefono(phoneNumberId);
+  // Nombre + precio + categoría, no solo nombre. Con solo el nombre, borrar se
+  // llevaba puesto el producto propio del dueño que la carga había respetado
+  // por llamarse igual: protegerlo al cargar y destruirlo al borrar es peor
+  // que cualquiera de las dos cosas por separado.
+  //
+  // Si los tres campos coinciden, ese producto es indistinguible del que puso
+  // el ejemplo, y borrarlo es lo correcto.
+  const p = await Producto.deleteMany({
+    negocioId: negocio._id,
+    $or: PRODUCTOS.map(([nombre, precioCentavos, categoria]) => ({ nombre, precioCentavos, categoria })),
+  });
+  const docs = await Documento.find({ negocioId: negocio._id, nombre: NOMBRE_DOC }).select("_id").lean();
+  const f = await Fragmento.deleteMany({ negocioId: negocio._id, documentoId: { $in: docs.map(d => d._id) } });
+  await Documento.deleteMany({ negocioId: negocio._id, nombre: NOMBRE_DOC });
+  console.log(`Sacado de "${negocio.nombre}": ${p.deletedCount} productos, ${f.deletedCount} fragmentos. No se tocó nada más.`);
+}
+
 async function borrar() {
   const negocio = await Negocio.findOne({ phoneNumberId: PHONE_ID_DEMO });
   if (!negocio) { console.log("No hay ninguna demo cargada."); return; }
@@ -471,8 +562,17 @@ async function crear() {
 async function main() {
   validateConfig();
   await mongoose.connect(CONFIG.MONGODB_URI);
-  if (process.argv.includes("--borrar")) await borrar();
-  else await crear();
+  // --en apunta a un negocio que ya existe; sin él, la demo vive en el suyo.
+  const i = process.argv.indexOf("--en");
+  const enNegocio = i >= 0 ? process.argv[i + 1] : null;
+  if (i >= 0 && !enNegocio) {
+    console.error("Falta el phoneNumberId:  node scripts/demo.js --en <phoneNumberId>");
+    process.exit(1);
+  }
+  const borrando = process.argv.includes("--borrar");
+
+  if (enNegocio) borrando ? await vaciar(enNegocio) : await llenar(enNegocio);
+  else borrando ? await borrar() : await crear();
   await mongoose.disconnect();
 }
 

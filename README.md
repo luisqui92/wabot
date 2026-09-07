@@ -357,6 +357,20 @@ menos, y el mismo comprobante reenviado por otra persona.
 
 Entrás con `demo@wabot.local` / `demo12345`.
 
+**Si lo que querés es llenar TU negocio**, no mirar otro panel:
+
+```bash
+node scripts/demo.js --en <tu-phoneNumberId>            # carga el ejemplo
+node scripts/demo.js --borrar --en <tu-phoneNumberId>   # lo saca
+```
+
+Eso carga **solo catálogo y conocimiento** en el negocio que ya tenés. No toca
+la configuración (nombre, voz, horarios, QR, herramientas) ni crea clientes,
+conversaciones, pedidos ni pagos falsos: datos inventados mezclados con los
+reales no se distinguen después. Los productos que ya tengas con el mismo
+nombre se respetan, y el borrado solo se lleva los que coinciden en nombre,
+precio y categoría con el ejemplo.
+
 Vive bajo el `phoneNumberId` `DEMO-PIZZERIA`, que no es el de ninguna línea real:
 ningún mensaje de WhatsApp puede caer en la demo, y borrarla no toca tu negocio.
 Correr el script dos veces no duplica nada, la borra y la vuelve a crear.

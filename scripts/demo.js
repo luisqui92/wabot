@@ -285,19 +285,40 @@ const CONVERSACIONES = [
 // datos que después no se distinguen de los verdaderos.
 const NOMBRE_DOC = "Información del local (ejemplo)";
 
-async function negocioPorTelefono(phoneNumberId) {
-  const negocio = await Negocio.findOne({ phoneNumberId });
-  if (negocio) return negocio;
+// Acepta el phoneNumberId de Meta o, más útil, el email con el que entrás al
+// panel: nadie se acuerda del phoneNumberId, pero todos saben con qué usuario
+// entran. Se prueba primero como teléfono porque es lo que identifica al
+// negocio; el email es un atajo que se resuelve por el usuario.
+async function resolverNegocio(clave) {
+  const porTelefono = await Negocio.findOne({ phoneNumberId: clave });
+  if (porTelefono) return porTelefono;
+
+  const usuario = await Usuario.findOne({ email: String(clave).toLowerCase().trim() });
+  if (usuario) {
+    const negocio = await Negocio.findById(usuario.negocioId);
+    if (negocio) return negocio;
+    console.error(`\nEl usuario "${clave}" existe pero su negocio ya no.\n`);
+    process.exit(1);
+  }
+
+  // Se listan negocios Y usuarios: si te equivocaste, acá está lo que sí sirve.
   const todos = await Negocio.find().select("nombre phoneNumberId").lean();
-  console.error(`\nNo hay ningún negocio con phoneNumberId "${phoneNumberId}".\n`);
-  console.error(todos.length ? "Los que hay son:" : "No hay ningún negocio cargado.");
-  for (const n of todos) console.error(`  ${n.phoneNumberId}  —  ${n.nombre}`);
+  const usuarios = await Usuario.find().select("email negocioId").lean();
+  console.error(`\nNo hay ningún negocio ni usuario que coincida con "${clave}".\n`);
+  if (todos.length) {
+    console.error("Negocios:");
+    for (const n of todos) console.error(`  ${n.phoneNumberId}  —  ${n.nombre}`);
+  }
+  if (usuarios.length) {
+    console.error("\nUsuarios del panel:");
+    for (const u of usuarios) console.error(`  ${u.email}`);
+  }
   console.error("");
   process.exit(1);
 }
 
-async function llenar(phoneNumberId) {
-  const negocio = await negocioPorTelefono(phoneNumberId);
+async function llenar(clave) {
+  const negocio = await resolverNegocio(clave);
 
   // Los que ya existan se respetan: si el dueño cargó "Coca-Cola 2L" con su
   // precio, el ejemplo no se lo pisa.
@@ -329,7 +350,7 @@ async function llenar(phoneNumberId) {
 
   const saltados = PRODUCTOS.length - aCargar.length;
   console.log(`
-✅ Ejemplo cargado en "${negocio.nombre}" (${phoneNumberId})
+✅ Ejemplo cargado en "${negocio.nombre}" (${negocio.phoneNumberId})
 
    ${aCargar.length} producto${aCargar.length === 1 ? "" : "s"}${saltados ? ` (${saltados} ya ${saltados === 1 ? "existía" : "existían"} y no se ${saltados === 1 ? "tocó" : "tocaron"})` : ""}
    ${CONOCIMIENTO.length} fragmentos de conocimiento
@@ -338,12 +359,12 @@ No se tocó nada más: ni la voz del bot, ni los horarios, ni el QR, ni tus
 conversaciones. Si querés que el bot use el catálogo, revisá que "Consultar
 precios" esté encendido en la pestaña Bot.
 
-Para sacarlo:  node scripts/demo.js --borrar --en ${phoneNumberId}
+Para sacarlo:  node scripts/demo.js --borrar --en ${clave}
 `);
 }
 
-async function vaciar(phoneNumberId) {
-  const negocio = await negocioPorTelefono(phoneNumberId);
+async function vaciar(clave) {
+  const negocio = await resolverNegocio(clave);
   // Nombre + precio + categoría, no solo nombre. Con solo el nombre, borrar se
   // llevaba puesto el producto propio del dueño que la carga había respetado
   // por llamarse igual: protegerlo al cargar y destruirlo al borrar es peor
@@ -566,7 +587,7 @@ async function main() {
   const i = process.argv.indexOf("--en");
   const enNegocio = i >= 0 ? process.argv[i + 1] : null;
   if (i >= 0 && !enNegocio) {
-    console.error("Falta el phoneNumberId:  node scripts/demo.js --en <phoneNumberId>");
+    console.error("Falta a qué negocio:  node scripts/demo.js --en <tu-email-del-panel>");
     process.exit(1);
   }
   const borrando = process.argv.includes("--borrar");

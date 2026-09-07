@@ -360,9 +360,13 @@ Entrás con `demo@wabot.local` / `demo12345`.
 **Si lo que querés es llenar TU negocio**, no mirar otro panel:
 
 ```bash
-node scripts/demo.js --en <tu-phoneNumberId>            # carga el ejemplo
-node scripts/demo.js --borrar --en <tu-phoneNumberId>   # lo saca
+node scripts/demo.js --en tu@email.com            # carga el ejemplo
+node scripts/demo.js --borrar --en tu@email.com   # lo saca
 ```
+
+`--en` acepta el email con el que entrás al panel o el `phoneNumberId` de Meta.
+El email es lo que uno recuerda; si le pasás cualquier otra cosa, te lista los
+negocios y los usuarios que hay.
 
 Eso carga **solo catálogo y conocimiento** en el negocio que ya tenés. No toca
 la configuración (nombre, voz, horarios, QR, herramientas) ni crea clientes,
